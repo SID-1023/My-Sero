@@ -6,6 +6,7 @@ import '../voice/voice_input.dart';
 import '../../widgets/mic_button.dart';
 import '../../widgets/assistant_response.dart';
 import '../../widgets/glowing_orb.dart';
+import 'keyboard_input_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -121,20 +122,29 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildKeyboardHint() {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 24),
-      child: Opacity(
-        opacity: 0.3,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.keyboard, size: 16, color: Colors.white),
-            SizedBox(width: 8),
-            Text(
-              "Use Keyboard",
-              style: TextStyle(fontSize: 13, color: Colors.white),
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const KeyboardInputScreen()),
+          );
+        },
+        child: const Opacity(
+          opacity: 0.3,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.keyboard, size: 16, color: Colors.white),
+              SizedBox(width: 8),
+              Text(
+                "Use Keyboard",
+                style: TextStyle(fontSize: 13, color: Colors.white),
+              ),
+            ],
+          ),
         ),
       ),
     );

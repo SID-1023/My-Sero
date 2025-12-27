@@ -15,36 +15,39 @@ class KeyboardInputScreen extends StatefulWidget {
 class _KeyboardInputScreenState extends State<KeyboardInputScreen> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  bool _sending = false;
+  bool _isSending = false;
 
   @override
   void initState() {
     super.initState();
-    // Auto-focus keyboard
+    // Auto-focus keyboard on entry
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
   }
 
-  void _submit(BuildContext context) {
-    if (_sending) return;
+  void _handleSubmission(BuildContext context) {
+    if (_isSending) return;
 
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    _sending = true;
+    setState(() => _isSending = true);
+
+    // 1. Force the keyboard to hide instantly
+    FocusManager.instance.primaryFocus?.unfocus();
 
     final provider = context.read<VoiceInputProvider>();
 
-    // Ensure clean state
+    // 2. Cancel any active voice listening
     provider.stopListening();
 
-    // ✅ Reuse backend logic
+    // 3. Execute the shared backend logic
     provider.sendTextInput(text);
 
+    // 4. Clear input and exit back to Home
     _controller.clear();
-
-    Navigator.pop(context); // return to HomeScreen
+    Navigator.pop(context);
   }
 
   @override
@@ -53,7 +56,7 @@ class _KeyboardInputScreenState extends State<KeyboardInputScreen> {
       backgroundColor: const Color(0xFF080101),
       body: Stack(
         children: [
-          // ===== Background blur =====
+          // Background blur layer
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
@@ -66,7 +69,7 @@ class _KeyboardInputScreenState extends State<KeyboardInputScreen> {
               children: [
                 const SizedBox(height: 24),
 
-                // ===== HEADER =====
+                // Header section
                 Row(
                   children: [
                     IconButton(
@@ -87,7 +90,7 @@ class _KeyboardInputScreenState extends State<KeyboardInputScreen> {
 
                 const Spacer(),
 
-                // ===== INPUT FIELD =====
+                // Input Field Container
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Container(
@@ -105,35 +108,39 @@ class _KeyboardInputScreenState extends State<KeyboardInputScreen> {
                       focusNode: _focusNode,
                       minLines: 1,
                       maxLines: 4,
+                      textInputAction: TextInputAction
+                          .send, // Changes keyboard 'Enter' to 'Send'
                       style: const TextStyle(color: Colors.white, fontSize: 18),
                       decoration: const InputDecoration(
                         hintText: "Type naturally…",
                         hintStyle: TextStyle(color: Colors.white38),
                         border: InputBorder.none,
                       ),
-                      onSubmitted: (_) => _submit(context),
+                      onSubmitted: (_) => _handleSubmission(context),
                     ),
                   ),
                 ),
 
                 const SizedBox(height: 20),
 
-                // ===== SEND BUTTON =====
+                // Visual Send Button
                 GestureDetector(
-                  onTap: () => _submit(context),
+                  onTap: () => _handleSubmission(context),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 32,
                       vertical: 14,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
+                      color: _isSending
+                          ? Colors.white10
+                          : Colors.white.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(color: Colors.white.withOpacity(0.2)),
                     ),
-                    child: const Text(
-                      "Send",
-                      style: TextStyle(
+                    child: Text(
+                      _isSending ? "Sending..." : "Send",
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -147,7 +154,7 @@ class _KeyboardInputScreenState extends State<KeyboardInputScreen> {
             ),
           ),
 
-          // Assistant response overlay
+          // Reuses your bubble widget for consistency
           const AssistantResponseBubble(),
         ],
       ),

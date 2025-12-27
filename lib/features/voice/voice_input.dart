@@ -55,7 +55,18 @@ class VoiceInputProvider extends ChangeNotifier {
   bool get isInitialized => _isInitialized;
   String? get errorMessage => _errorMessage;
 
-  /// Toggle whether Sero should automatically start listening after speaking
+  // ===== SETTINGS & PERMISSIONS =====
+
+  /// Opens the device system settings for this specific app
+  Future<void> openSettings() async {
+    try {
+      await openAppSettings();
+    } catch (e) {
+      _errorMessage = "Could not open settings: $e";
+      notifyListeners();
+    }
+  }
+
   void setAutoListenAfterResponse(bool enabled) {
     _autoListenAfterResponse = enabled;
     notifyListeners();
@@ -142,24 +153,39 @@ class VoiceInputProvider extends ChangeNotifier {
     notifyListeners();
 
     if (_lastWords.isNotEmpty) {
-      _generateSeroResponse(_lastWords);
+      _generateSeroResponse(_lastWords, speak: true);
     }
   }
 
-  // ===== KEYBOARD INPUT (NEW – REQUIRED) =====
-  /// Allows keyboard text to use the same AI + emotion pipeline
+  // ===== KEYBOARD INPUT =====
   void sendTextInput(String text) {
-    if (text.trim().isEmpty) return;
+    final cleanText = text.trim();
+    if (cleanText.isEmpty) return;
 
-    _lastWords = text;
+    // 1. Update the display words
+    _lastWords = cleanText;
+
+    // 2. Trigger the color shift based on the text
+    _updateEmotion(cleanText);
+
+    // 3. Set thinking state and clear mic visuals
+    _isThinking = true;
+    _soundLevel = 0.0;
+    _smoothedSoundLevel = 0.0;
     notifyListeners();
 
-    _generateSeroResponse(text);
+    // 4. Fire the response pipeline (text-only for keyboard input)
+    _generateSeroResponse(cleanText, speak: false);
+  }
+
+  /// Update the emotion immediately based on provided text so the orb updates
+  void _updateEmotion(String text) {
+    _currentEmotion = _classifyEmotion(text);
   }
 
   // ===== RESPONSE ENGINE =====
   Future<String> _fetchAIResponse(String input) async {
-    await Future.delayed(const Duration(milliseconds: 200));
+    await Future.delayed(const Duration(milliseconds: 600));
 
     final lower = input.toLowerCase();
     if (lower.contains('hello') || lower.contains('hi')) {
@@ -173,10 +199,10 @@ class VoiceInputProvider extends ChangeNotifier {
     return 'I heard you, but my processors cannot yet fulfill that request.';
   }
 
-  Future<void> _generateSeroResponse(String input) async {
+  Future<void> _generateSeroResponse(String input, {bool speak = true}) async {
     _isThinking = true;
 
-    // 🧠 Emotion detection
+    // 🧠 Emotion detection (updates UI instantly)
     _currentEmotion = _classifyEmotion(input);
     notifyListeners();
 
@@ -184,25 +210,37 @@ class VoiceInputProvider extends ChangeNotifier {
 
     _lastResponse = response;
     _isThinking = false;
-    _isSpeaking = true;
     notifyListeners();
 
-    await _voiceOutput.speak(
-      response,
-      onStart: () {
-        _soundLevel = 0.0;
-        _smoothedSoundLevel = 0.0;
-        notifyListeners();
-      },
-      onComplete: () {
-        _isSpeaking = false;
-        notifyListeners();
-      },
-    );
+    if (speak) {
+      _isSpeaking = true;
+      notifyListeners();
+
+      await _voiceOutput.speak(
+        response,
+        onStart: () {
+          _soundLevel = 0.0;
+          _smoothedSoundLevel = 0.0;
+          notifyListeners();
+        },
+        onComplete: () {
+          _isSpeaking = false;
+          notifyListeners();
+        },
+      );
+    } else {
+      // Clear mic visuals so the UI shows a quiet state when returning text-only
+      _soundLevel = 0.0;
+      _smoothedSoundLevel = 0.0;
+      notifyListeners();
+    }
 
     if (_autoListenAfterResponse) {
       await Future.delayed(const Duration(milliseconds: 800));
-      startListening();
+      // Only auto-listen if we aren't already listening or thinking
+      if (!_isListening && !_isThinking) {
+        startListening();
+      }
     }
   }
 
@@ -215,14 +253,12 @@ class VoiceInputProvider extends ChangeNotifier {
         lower.contains('lonely')) {
       return Emotion.sad;
     }
-
     if (lower.contains('stressed') ||
         lower.contains('anxious') ||
         lower.contains('angry') ||
         lower.contains('overwhelm')) {
       return Emotion.stressed;
     }
-
     if (lower.contains('calm') ||
         lower.contains('relax') ||
         lower.contains('good') ||
@@ -232,11 +268,5 @@ class VoiceInputProvider extends ChangeNotifier {
     }
 
     return Emotion.neutral;
-  }
-
-  Future<void> openSettings() async {
-    try {
-      await openAppSettings();
-    } catch (_) {}
   }
 }
