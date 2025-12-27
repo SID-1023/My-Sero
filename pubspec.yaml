@@ -1,6 +1,7 @@
 name: sero
-description: "Emotion-Aware Voice Assistant built with Flutter"
+description: Emotion-Aware Voice Assistant built with Flutter
 publish_to: 'none'
+
 version: 1.0.0+1
 
 environment:
@@ -9,16 +10,29 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # Voice Input (Speech to Text)
   speech_to_text: ^7.3.0
+
+  # Voice Output (Text to Speech)
   flutter_tts: ^4.2.3
+
+  # State Management (future-safe)
   provider: ^6.1.2
+
+  # Runtime permissions (mic, later camera if needed)
   permission_handler: ^11.3.1
+
+  # UI animations (optional, clean)
   animate_do: ^3.3.4
+
+  # iOS-style icons
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^3.0.0
 
 flutter:

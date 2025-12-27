@@ -13,14 +13,23 @@ class VoiceInputProvider extends ChangeNotifier {
   bool _isSpeaking = false;
   bool _autoListenAfterResponse =
       true; // automatically listen after Sero speaks
+
+  // Microphone sound-level monitoring (smoothed for UI)
+  double _soundLevel = 0.0;
+  double _smoothedSoundLevel = 0.0;
+  static const double _soundSmoothing = 0.15;
+
   String _lastWords = "";
+  String _lastResponse = "";
   String? _errorMessage;
 
   bool get isListening => _isListening;
   bool get isThinking => _isThinking;
   bool get isSpeaking => _isSpeaking;
   bool get autoListenAfterResponse => _autoListenAfterResponse;
+  double get soundLevel => _smoothedSoundLevel;
   String get lastWords => _lastWords;
+  String get lastResponse => _lastResponse;
   bool get isInitialized => _isInitialized;
   String? get errorMessage => _errorMessage;
 
@@ -92,7 +101,15 @@ class VoiceInputProvider extends ChangeNotifier {
           _lastWords = result.recognizedWords;
           notifyListeners();
         },
-        onSoundLevelChange: (level) => debugPrint('Sound level: $level'),
+        onSoundLevelChange: (level) {
+          // level is usually a small double (device dependent), smooth it for UI
+          _soundLevel = level;
+          _smoothedSoundLevel =
+              _smoothedSoundLevel * (1 - _soundSmoothing) +
+              _soundLevel * _soundSmoothing;
+          notifyListeners();
+        },
+
         listenFor: const Duration(seconds: 60),
       );
     } catch (e) {
@@ -111,6 +128,8 @@ class VoiceInputProvider extends ChangeNotifier {
     }
 
     _isListening = false;
+    _soundLevel = 0.0;
+    _smoothedSoundLevel = 0.0;
     notifyListeners();
 
     // If we captured words, process them immediately
@@ -120,29 +139,34 @@ class VoiceInputProvider extends ChangeNotifier {
   }
 
   /// Simple local "Brain" - replace with API integration for richer responses
+  Future<String> _fetchAIResponse(String input) async {
+    // Placeholder for AI/backend integration. Right now it uses the simple rules below.
+    // Replace this with an HTTP call to OpenAI/Gemini/etc. if you want real conversations.
+    await Future.delayed(
+      const Duration(milliseconds: 200),
+    ); // simulate small network delay
+
+    final String lower = input.toLowerCase();
+    if (lower.contains('hello') || lower.contains('hi')) {
+      return 'I am here. What do you require from the void?';
+    } else if (lower.contains('who are you') ||
+        lower.contains('what are you')) {
+      return 'I am Sero, an emotion-aware presence bound to this device.';
+    } else if (lower.contains('time')) {
+      return 'The current device time is ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}. Pleasant, isn\'t it?';
+    }
+
+    return 'I heard you, but my processors cannot yet fulfill that request.';
+  }
+
   Future<void> _generateSeroResponse(String input) async {
     _isThinking = true;
     notifyListeners();
 
-    // Simulate short thinking delay
-    await Future.delayed(const Duration(milliseconds: 350));
+    // get response from the (current) Brain
+    final response = await _fetchAIResponse(input);
 
-    final String lower = input.toLowerCase();
-    String response;
-
-    if (lower.contains('hello') || lower.contains('hi')) {
-      response = 'I am here. What do you require from the void?';
-    } else if (lower.contains('who are you') ||
-        lower.contains('what are you')) {
-      response = 'I am Sero, an emotion-aware presence bound to this device.';
-    } else if (lower.contains('time')) {
-      response =
-          'The current device time is ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}. Pleasant, isn\'t it?';
-    } else {
-      response =
-          'I heard you, but my processors cannot yet fulfill that request.';
-    }
-
+    _lastResponse = response;
     _isThinking = false;
     _isSpeaking = true;
     notifyListeners();
@@ -151,9 +175,12 @@ class VoiceInputProvider extends ChangeNotifier {
     await _voiceOutput.speak(
       response,
       onStart: () {
-        // Can trigger additional UI changes on start if needed
+        // Reset sound levels while TTS is playing so we don't accidentally pick up playback
+        _soundLevel = 0.0;
+        _smoothedSoundLevel = 0.0;
+        notifyListeners();
       },
-      onComplete: () {
+      onComplete: () async {
         _isSpeaking = false;
         notifyListeners();
       },

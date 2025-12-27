@@ -71,6 +71,7 @@ class SeroMicButton extends StatelessWidget {
                   controller.value,
                   isListening: voiceProvider.isListening,
                   isSpeaking: voiceProvider.isSpeaking,
+                  soundLevel: voiceProvider.soundLevel,
                 ),
               );
             },
@@ -87,23 +88,30 @@ class Mini3DPainter extends CustomPainter {
   final double progress;
   final bool isListening;
   final bool isSpeaking;
+  final double soundLevel;
 
   Mini3DPainter(
     this.progress, {
     required this.isListening,
     this.isSpeaking = false,
+    this.soundLevel = 0.0,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
 
-    // Pulse when speaking, grow when listening
-    final double pulse = isSpeaking
+    // Pulse when speaking, grow slightly with voice volume
+    final double speakingPulse = isSpeaking
         ? (1.0 + 0.04 * (1 + sin(progress * 2 * pi)))
         : 1.0;
+
+    // Subtle sound-driven pulse (clamped)
+    final double soundPulse = 1.0 + (soundLevel / 20.0).clamp(0.0, 0.12);
+    final double totalPulse = speakingPulse * soundPulse;
+
     final baseRadius =
-        (isListening ? size.width / 3.0 : size.width / 3.5) * pulse;
+        (isListening ? size.width / 3.0 : size.width / 3.5) * totalPulse;
 
     for (int i = 0; i < 3; i++) {
       // Slower rotation while speaking, faster when listening
@@ -111,17 +119,33 @@ class Mini3DPainter extends CustomPainter {
           progress * 2 * pi * (isSpeaking ? 0.4 : (isListening ? 1.6 : 1.0));
       final double orbitOffset = i * (pi * 0.6);
 
+      final double baseStroke = isListening ? 6.0 : (isSpeaking ? 5.0 : 4.0);
+      final double strokeWidth =
+          baseStroke * (1.0 + (soundLevel / 100.0)).clamp(1.0, 1.14);
+
       final Paint tubePaint = Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = isListening ? 6.0 : (isSpeaking ? 5.0 : 4.0)
+        ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round
         ..color = isListening
             ? const Color(0xFFFF2E2E)
             : (isSpeaking ? const Color(0xFF8B0000) : const Color(0xFFD50000));
 
+      // Increase glow opacity & width slightly with sound level (subtle, no shape change)
+      final double baseGlowWidth = isListening
+          ? 18.0
+          : (isSpeaking ? 14.0 : 10.0);
+      final double glowWidth =
+          baseGlowWidth * (1.0 + (soundLevel / 140.0)).clamp(1.0, 1.12);
+      final double baseOpacity = isListening ? 0.6 : (isSpeaking ? 0.55 : 0.32);
+      final double glowOpacity = (baseOpacity + (soundLevel / 40.0)).clamp(
+        0.0,
+        0.88,
+      );
+
       final Paint glowPaint = Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = isListening ? 18.0 : (isSpeaking ? 14.0 : 10.0)
+        ..strokeWidth = glowWidth
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8)
         ..color =
             (isListening
@@ -129,7 +153,7 @@ class Mini3DPainter extends CustomPainter {
                     : (isSpeaking
                           ? const Color(0xFF6B0000)
                           : const Color(0xFFFF1A1A)))
-                .withOpacity(isListening ? 0.6 : (isSpeaking ? 0.55 : 0.32));
+                .withOpacity(glowOpacity);
 
       final Path path = Path();
       for (double t = 0; t <= 2 * pi; t += 0.3) {
@@ -161,6 +185,7 @@ class Mini3DPainter extends CustomPainter {
   bool shouldRepaint(covariant Mini3DPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.isListening != isListening ||
-        oldDelegate.isSpeaking != isSpeaking;
+        oldDelegate.isSpeaking != isSpeaking ||
+        oldDelegate.soundLevel != soundLevel;
   }
 }
