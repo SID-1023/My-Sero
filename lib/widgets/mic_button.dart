@@ -72,6 +72,7 @@ class SeroMicButton extends StatelessWidget {
                   isListening: voiceProvider.isListening,
                   isSpeaking: voiceProvider.isSpeaking,
                   soundLevel: voiceProvider.soundLevel,
+                  emotion: voiceProvider.currentEmotion,
                 ),
               );
             },
@@ -89,12 +90,14 @@ class Mini3DPainter extends CustomPainter {
   final bool isListening;
   final bool isSpeaking;
   final double soundLevel;
+  final Emotion emotion;
 
   Mini3DPainter(
     this.progress, {
     required this.isListening,
     this.isSpeaking = false,
     this.soundLevel = 0.0,
+    this.emotion = Emotion.neutral,
   });
 
   @override
@@ -113,6 +116,22 @@ class Mini3DPainter extends CustomPainter {
     final baseRadius =
         (isListening ? size.width / 3.0 : size.width / 3.5) * totalPulse;
 
+    // Map emotion to a gentle tint color
+    Color? emotionTint;
+    switch (emotion) {
+      case Emotion.calm:
+        emotionTint = const Color(0xFF4CAF50); // green
+        break;
+      case Emotion.sad:
+        emotionTint = const Color(0xFF2196F3); // blue
+        break;
+      case Emotion.stressed:
+        emotionTint = const Color(0xFFFF5252); // red
+        break;
+      default:
+        emotionTint = null;
+    }
+
     for (int i = 0; i < 3; i++) {
       // Slower rotation while speaking, faster when listening
       final double rotationSpeed =
@@ -123,13 +142,21 @@ class Mini3DPainter extends CustomPainter {
       final double strokeWidth =
           baseStroke * (1.0 + (soundLevel / 100.0)).clamp(1.0, 1.14);
 
+      // Base colors are chosen to preserve previous contrast
+      final Color baseTubeColor = isListening
+          ? const Color(0xFFFF2E2E)
+          : (isSpeaking ? const Color(0xFF8B0000) : const Color(0xFFD50000));
+
+      // Blend with emotion tint subtly if present
+      final Color tubeColor = emotionTint != null
+          ? Color.lerp(baseTubeColor, emotionTint, 0.36) ?? baseTubeColor
+          : baseTubeColor;
+
       final Paint tubePaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round
-        ..color = isListening
-            ? const Color(0xFFFF2E2E)
-            : (isSpeaking ? const Color(0xFF8B0000) : const Color(0xFFD50000));
+        ..color = tubeColor;
 
       // Increase glow opacity & width slightly with sound level (subtle, no shape change)
       final double baseGlowWidth = isListening
@@ -143,17 +170,19 @@ class Mini3DPainter extends CustomPainter {
         0.88,
       );
 
+      final Color baseGlowColor = isListening
+          ? const Color(0xFFFF1A1A)
+          : (isSpeaking ? const Color(0xFF6B0000) : const Color(0xFFFF1A1A));
+
+      final Color glowColor = emotionTint != null
+          ? Color.lerp(baseGlowColor, emotionTint, 0.34) ?? baseGlowColor
+          : baseGlowColor;
+
       final Paint glowPaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = glowWidth
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8)
-        ..color =
-            (isListening
-                    ? const Color(0xFFFF1A1A)
-                    : (isSpeaking
-                          ? const Color(0xFF6B0000)
-                          : const Color(0xFFFF1A1A)))
-                .withOpacity(glowOpacity);
+        ..color = glowColor.withOpacity(glowOpacity);
 
       final Path path = Path();
       for (double t = 0; t <= 2 * pi; t += 0.3) {
@@ -186,6 +215,7 @@ class Mini3DPainter extends CustomPainter {
     return oldDelegate.progress != progress ||
         oldDelegate.isListening != isListening ||
         oldDelegate.isSpeaking != isSpeaking ||
-        oldDelegate.soundLevel != soundLevel;
+        oldDelegate.soundLevel != soundLevel ||
+        oldDelegate.emotion != emotion;
   }
 }
