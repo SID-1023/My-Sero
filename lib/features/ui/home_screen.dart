@@ -37,7 +37,7 @@ class _HomeScreenState extends State<HomeScreen>
       backgroundColor: const Color(0xFF080101),
       body: Stack(
         children: [
-          // ===== BACKGROUND AMBIENT GLOW =====
+          // ================= BACKGROUND AMBIENT GLOW =================
           Positioned(
             top: -150,
             left: size.width * 0.1,
@@ -55,15 +55,16 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-          // ===== MAIN CONTENT =====
+          // ================= MAIN CONTENT =================
           SafeArea(
             child: Column(
               children: [
                 const SizedBox(height: 32),
                 _buildHeader(),
+
                 const Spacer(),
 
-                // ===== MAIN ORB (USING SHARED PAINTER) =====
+                // ================= MAIN ORB =================
                 SizedBox(
                   width: 320,
                   height: 320,
@@ -81,19 +82,22 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
 
                 const Spacer(),
-                _buildKeyboardHint(),
-                _buildBottomNav(),
+
+                _buildKeyboardHint(context),
+
+                _buildBottomNav(provider),
               ],
             ),
           ),
 
-          // ===== ASSISTANT RESPONSE =====
+          // ================= ASSISTANT RESPONSE OVERLAY =================
           const AssistantResponseBubble(),
         ],
       ),
     );
   }
 
+  // ================= HEADER =================
   Widget _buildHeader() {
     return Column(
       children: const [
@@ -121,14 +125,14 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildKeyboardHint() {
+  // ================= KEYBOARD HINT =================
+  Widget _buildKeyboardHint(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          Navigator.push(
-            context,
+          Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const KeyboardInputScreen()),
           );
         },
@@ -150,7 +154,8 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildBottomNav() {
+  // ================= BOTTOM NAV =================
+  Widget _buildBottomNav(VoiceInputProvider provider) {
     return Container(
       margin: const EdgeInsets.fromLTRB(30, 0, 30, 30),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
@@ -164,20 +169,21 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           const Icon(Icons.person_outline, color: Colors.white38),
 
+          // ================= MIC BUTTON =================
           SeroMicButton(controller: _controller),
 
-          Consumer<VoiceInputProvider>(
-            builder: (_, vp, __) => IconButton(
-              icon: Icon(
-                Icons.tune,
-                color: vp.autoListenAfterResponse
-                    ? Colors.greenAccent
-                    : Colors.white38,
-              ),
-              onPressed: () {
-                vp.setAutoListenAfterResponse(!vp.autoListenAfterResponse);
-              },
+          IconButton(
+            icon: Icon(
+              Icons.tune,
+              color: provider.autoListenAfterResponse
+                  ? Colors.greenAccent
+                  : Colors.white38,
             ),
+            onPressed: () {
+              provider.setAutoListenAfterResponse(
+                !provider.autoListenAfterResponse,
+              );
+            },
           ),
         ],
       ),
