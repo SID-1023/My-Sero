@@ -30,6 +30,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   # Date/time formatting
   intl: ^0.18.0
+  device_apps: ^2.0.2
 
 dev_dependencies:
   flutter_test:

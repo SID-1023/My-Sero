@@ -46,6 +46,38 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
+	<!-- Allow querying for installed apps (required to open apps by URL scheme) -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram</string>
+		<string>twitter</string>
+		<string>fb</string>
+		<string>facebook</string>
+		<string>youtube</string>
+		<string>maps</string>
+		<string>comgooglemaps</string>
+		<string>googlechrome</string>
+		<string>whatsapp</string>
+		<string>tg</string>
+		<string>telegram</string>
+		<string>viber</string>
+		<string>skype</string>
+		<string>slack</string>
+		<string>zoomus</string>
+		<string>spotify</string>
+		<string>soundcloud</string>
+		<string>pinterest</string>
+		<string>reddit</string>
+		<string>snapchat</string>
+		<string>linkedin</string>
+		<string>messenger</string>
+		<string>fb-messenger</string>
+		<string>uber</string>
+		<string>lyft</string>
+		<string>tiktok</string>
+		<string>weixin</string>
+	</array>
+
 	<!-- Microphone & Speech recognition usage -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Sero needs access to your microphone to respond to your voice.</string>

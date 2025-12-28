@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_apps/device_apps.dart';
 
 import 'voice_output.dart';
 import '../chat/models/chat_message.dart';
@@ -445,6 +448,33 @@ class VoiceInputProvider extends ChangeNotifier {
 
     String response;
 
+    // First, handle direct "open/launch/start <app>" commands on Android.
+    final openMatch = RegExp(
+      r'\b(?:open|launch|start)\s+(.+)',
+      caseSensitive: false,
+    ).firstMatch(input);
+    if (openMatch != null) {
+      final appName = openMatch.group(1)!.trim();
+
+      if (Platform.isAndroid) {
+        final ok = await _openAppByName(appName);
+        final msg = ok
+            ? 'Opening $appName.'
+            : "I couldn't find '$appName' on this device.";
+
+        // Add reply and speak if requested
+        _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
+        if (speak && msg.isNotEmpty) await _voiceOutput.speak(msg);
+        return;
+      } else {
+        final msg =
+            'Opening apps by voice is currently supported on Android only.';
+        _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
+        if (speak) await _voiceOutput.speak(msg);
+        return;
+      }
+    }
+
     // 1️⃣ Check local command engine first
     final intent = SeroCommandHandler.determineIntent(input);
     if (intent != null) {
@@ -556,5 +586,43 @@ class VoiceInputProvider extends ChangeNotifier {
     }
 
     return Emotion.neutral;
+  }
+
+  /* ================= APP OPENING (ANDROID) ================= */
+
+  /// Attempts to open an installed Android app by fuzzy matching the app name.
+  Future<bool> _openAppByName(String name) async {
+    try {
+      final apps = await DeviceApps.getInstalledApplications(
+        includeAppIcons: false,
+        includeSystemApps: false,
+      );
+
+      final lowerName = name.toLowerCase();
+
+      // Narrow down candidates by app name or package name containing the spoken name
+      final candidates = apps.where((a) {
+        final n = a.appName.toLowerCase();
+        final p = a.packageName.toLowerCase();
+        return n.contains(lowerName) || p.contains(lowerName);
+      }).toList();
+
+      if (candidates.isEmpty) return false;
+
+      // Prefer exact name match if any
+      var match = candidates.first;
+      for (final c in candidates) {
+        if (c.appName.toLowerCase() == lowerName) {
+          match = c;
+          break;
+        }
+      }
+
+      return await DeviceApps.openApp(match.packageName);
+    } catch (e) {
+      _errorMessage = 'Open app failed: $e';
+      notifyListeners();
+      return false;
+    }
   }
 }
