@@ -1,43 +1,47 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'voice_output.dart';
-import '../ui/chat_message.dart';
+import '../chat/models/chat_message.dart';
+import '../chat/chat_provider.dart';
 
-/// Simple emotion categories derived from user text input
+/// Emotion categories derived from user input
 enum Emotion { neutral, calm, sad, stressed }
 
 class VoiceInputProvider extends ChangeNotifier {
   final SpeechToText _speech = SpeechToText();
   final VoiceOutput _voiceOutput = VoiceOutput();
+  final ChatProvider _chatProvider;
 
-  // ================= CORE STATES =================
+  VoiceInputProvider({required ChatProvider chatProvider})
+    : _chatProvider = chatProvider;
+
+  /* ================= CORE STATES ================= */
+
   bool _isListening = false;
   bool _isInitialized = false;
   bool _isThinking = false;
   bool _isSpeaking = false;
   bool _autoListenAfterResponse = true;
 
-  // ================= AUDIO LEVEL =================
+  /* ================= AUDIO LEVEL ================= */
+
   double _soundLevel = 0.0;
   double _smoothedSoundLevel = 0.0;
   static const double _soundSmoothing = 0.15;
+
+  /* ================= TEXT ================= */
 
   String _lastWords = "";
   String _lastResponse = "";
   String? _errorMessage;
 
-  // ================= CHAT HISTORY =================
-  final List<ChatMessage> _messages = [];
-  List<ChatMessage> get messages => List.unmodifiable(_messages);
+  /* ================= EMOTION ================= */
 
-  // ================= EMOTION =================
   Emotion _currentEmotion = Emotion.neutral;
   Emotion get currentEmotion => _currentEmotion;
 
-  /// 🎨 Emotion-driven orb color
   Color get emotionColor {
     switch (_currentEmotion) {
       case Emotion.calm:
@@ -47,12 +51,12 @@ class VoiceInputProvider extends ChangeNotifier {
       case Emotion.stressed:
         return const Color(0xFFFF5252);
       case Emotion.neutral:
-      default:
         return const Color(0xFFD50000);
     }
   }
 
-  // ================= GETTERS =================
+  /* ================= GETTERS ================= */
+
   bool get isListening => _isListening;
   bool get isThinking => _isThinking;
   bool get isSpeaking => _isSpeaking;
@@ -63,7 +67,8 @@ class VoiceInputProvider extends ChangeNotifier {
   bool get isInitialized => _isInitialized;
   String? get errorMessage => _errorMessage;
 
-  // ================= SETTINGS =================
+  /* ================= SETTINGS ================= */
+
   void setAutoListenAfterResponse(bool enabled) {
     _autoListenAfterResponse = enabled;
     notifyListeners();
@@ -73,8 +78,11 @@ class VoiceInputProvider extends ChangeNotifier {
     await openAppSettings();
   }
 
-  // ================= INITIALIZATION =================
+  /* ================= INITIALIZATION ================= */
+
   Future<bool> initSpeech() async {
+    _errorMessage = null;
+
     var status = await Permission.microphone.status;
     if (!status.isGranted) {
       status = await Permission.microphone.request();
@@ -86,13 +94,22 @@ class VoiceInputProvider extends ChangeNotifier {
       return false;
     }
 
-    _isInitialized = await _speech.initialize();
-    notifyListeners();
-    return _isInitialized;
+    try {
+      _isInitialized = await _speech.initialize();
+      notifyListeners();
+      return _isInitialized;
+    } catch (e) {
+      _errorMessage = 'Speech init failed: $e';
+      notifyListeners();
+      return false;
+    }
   }
 
-  // ================= VOICE LISTENING =================
+  /* ================= VOICE LISTENING ================= */
+
   void startListening() async {
+    if (_isListening || _isSpeaking) return;
+
     if (!_isInitialized) {
       final ok = await initSpeech();
       if (!ok) return;
@@ -102,24 +119,37 @@ class VoiceInputProvider extends ChangeNotifier {
     _isListening = true;
     notifyListeners();
 
-    await _speech.listen(
-      onResult: (result) {
-        _lastWords = result.recognizedWords;
-        notifyListeners();
-      },
-      onSoundLevelChange: (level) {
-        _soundLevel = level;
-        _smoothedSoundLevel =
-            _smoothedSoundLevel * (1 - _soundSmoothing) +
-            _soundLevel * _soundSmoothing;
-        notifyListeners();
-      },
-    );
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          _lastWords = result.recognizedWords;
+          notifyListeners();
+        },
+        onSoundLevelChange: (level) {
+          _soundLevel = level;
+          _smoothedSoundLevel =
+              _smoothedSoundLevel * (1 - _soundSmoothing) +
+              _soundLevel * _soundSmoothing;
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      _errorMessage = 'Listen error: $e';
+      _isListening = false;
+      notifyListeners();
+    }
   }
 
   void stopListening() async {
-    await _speech.stop();
+    if (!_isListening) return;
+
+    try {
+      await _speech.stop();
+    } catch (_) {}
+
     _isListening = false;
+    _soundLevel = 0.0;
+    _smoothedSoundLevel = 0.0;
     notifyListeners();
 
     if (_lastWords.isNotEmpty) {
@@ -127,37 +157,56 @@ class VoiceInputProvider extends ChangeNotifier {
     }
   }
 
-  // ================= KEYBOARD INPUT =================
-  void sendTextInput(String text) {
+  /* ================= KEYBOARD INPUT ================= */
+
+  void sendTextInput(
+    String text, {
+    bool suppressAutoListen = true,
+    bool showOverlay = false,
+  }) {
     final cleanText = text.trim();
     if (cleanText.isEmpty) return;
 
-    _handleUserInput(cleanText, speak: false);
+    _handleUserInput(
+      cleanText,
+      speak: false,
+      suppressAutoListen: suppressAutoListen,
+      showOverlay: showOverlay,
+    );
   }
 
-  // ================= USER INPUT PIPELINE =================
-  void _handleUserInput(String input, {required bool speak}) {
-    // Add USER message
-    _messages.add(
-      ChatMessage(
-        id: _id(),
-        text: input,
-        sender: MessageSender.user,
-        timestamp: DateTime.now(),
-      ),
-    );
+  /* ================= USER INPUT PIPELINE ================= */
+
+  void _handleUserInput(
+    String input, {
+    required bool speak,
+    bool suppressAutoListen = false,
+    bool showOverlay = true,
+  }) {
+    // USER message → delegate to ChatProvider to keep sessions in sync
+    _chatProvider.addMessage(text: input, sender: MessageSender.user);
 
     _lastWords = input;
     _currentEmotion = _classifyEmotion(input);
-    _isThinking = true;
     _soundLevel = 0.0;
     _smoothedSoundLevel = 0.0;
-    notifyListeners();
 
-    _generateSeroResponse(input, speak: speak);
+    // Only set thinking state (and show overlay) when requested
+    if (showOverlay) {
+      _isThinking = true;
+      notifyListeners();
+    }
+
+    _generateSeroResponse(
+      input,
+      speak: speak,
+      suppressAutoListen: suppressAutoListen,
+      showOverlay: showOverlay,
+    );
   }
 
-  // ================= RESPONSE ENGINE =================
+  /* ================= RESPONSE ENGINE ================= */
+
   Future<String> _fetchAIResponse(String input) async {
     await Future.delayed(const Duration(milliseconds: 600));
 
@@ -178,32 +227,32 @@ class VoiceInputProvider extends ChangeNotifier {
   Future<void> _generateSeroResponse(
     String input, {
     required bool speak,
+    bool suppressAutoListen = false,
+    bool showOverlay = true,
   }) async {
     final response = await _fetchAIResponse(input);
 
-    // Add SERO message
-    _messages.add(
-      ChatMessage(
-        id: _id(),
-        text: response,
-        sender: MessageSender.sero,
-        timestamp: DateTime.now(),
-      ),
-    );
+    // SERO message → delegate to ChatProvider
+    _chatProvider.addMessage(text: response, sender: MessageSender.sero);
 
-    _lastResponse = response;
-    _isThinking = false;
-    notifyListeners();
+    // Only update overlay-related state when requested
+    if (showOverlay) {
+      _lastResponse = response;
+      _isThinking = false;
+      notifyListeners();
+    }
 
     if (speak) {
       _isSpeaking = true;
       notifyListeners();
+
       await _voiceOutput.speak(response);
+
       _isSpeaking = false;
       notifyListeners();
     }
 
-    if (_autoListenAfterResponse) {
+    if (!suppressAutoListen && _autoListenAfterResponse) {
       await Future.delayed(const Duration(milliseconds: 800));
       if (!_isListening && !_isThinking) {
         startListening();
@@ -211,7 +260,8 @@ class VoiceInputProvider extends ChangeNotifier {
     }
   }
 
-  // ================= EMOTION CLASSIFIER =================
+  /* ================= EMOTION CLASSIFIER ================= */
+
   Emotion _classifyEmotion(String text) {
     final lower = text.toLowerCase();
 
@@ -220,12 +270,14 @@ class VoiceInputProvider extends ChangeNotifier {
         lower.contains('lonely')) {
       return Emotion.sad;
     }
+
     if (lower.contains('stressed') ||
         lower.contains('anxious') ||
         lower.contains('angry') ||
         lower.contains('overwhelm')) {
       return Emotion.stressed;
     }
+
     if (lower.contains('calm') ||
         lower.contains('relax') ||
         lower.contains('good') ||
@@ -236,7 +288,4 @@ class VoiceInputProvider extends ChangeNotifier {
 
     return Emotion.neutral;
   }
-
-  String _id() =>
-      '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(9999)}';
 }

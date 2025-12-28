@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../features/ui/chat_message.dart';
-import '../features/voice/voice_input.dart';
+import '../features/chat/chat_provider.dart';
 
 class ChatHistory extends StatelessWidget {
   const ChatHistory({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final messages = context.watch<VoiceInputProvider>().messages;
+    final messages = context.watch<ChatProvider>().messages;
 
     if (messages.isEmpty) {
       return const SizedBox.shrink();

@@ -7,6 +7,9 @@ import '../../widgets/mic_button.dart';
 import '../../widgets/assistant_response.dart';
 import '../../widgets/glowing_orb.dart';
 import 'keyboard_input_screen.dart';
+import '../chat/chat_list_screen.dart';
+import '../chat/chat_provider.dart';
+import '../chat/chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -168,6 +171,33 @@ class _HomeScreenState extends State<HomeScreen>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Icon(Icons.person_outline, color: Colors.white38),
+
+          // ================= CHAT / NEW CHAT ICONS =================
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(
+                  Icons.chat_bubble_outline,
+                  color: Colors.white38,
+                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ChatListScreen()),
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, color: Colors.white38),
+                onPressed: () {
+                  final chatProvider = context.read<ChatProvider>();
+                  chatProvider.createNewChat();
+                  Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
+                },
+              ),
+            ],
+          ),
 
           // ================= MIC BUTTON =================
           SeroMicButton(controller: _controller),

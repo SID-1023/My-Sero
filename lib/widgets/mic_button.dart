@@ -70,6 +70,7 @@ class SeroMicButton extends StatelessWidget {
                 painter: Mini3DPainter(
                   controller.value,
                   isListening: voiceProvider.isListening,
+                  isThinking: voiceProvider.isThinking,
                   isSpeaking: voiceProvider.isSpeaking,
                   soundLevel: voiceProvider.soundLevel,
                   emotion: voiceProvider.currentEmotion,
@@ -88,6 +89,7 @@ class SeroMicButton extends StatelessWidget {
 class Mini3DPainter extends CustomPainter {
   final double progress;
   final bool isListening;
+  final bool isThinking;
   final bool isSpeaking;
   final double soundLevel;
   final Emotion emotion;
@@ -95,6 +97,7 @@ class Mini3DPainter extends CustomPainter {
   Mini3DPainter(
     this.progress, {
     required this.isListening,
+    this.isThinking = false,
     this.isSpeaking = false,
     this.soundLevel = 0.0,
     this.emotion = Emotion.neutral,
@@ -158,17 +161,20 @@ class Mini3DPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round
         ..color = tubeColor;
 
-      // Increase glow opacity & width slightly with sound level (subtle, no shape change)
+      // Increase glow opacity & width with sound level and speaking state (stronger for speaking)
       final double baseGlowWidth = isListening
           ? 18.0
-          : (isSpeaking ? 14.0 : 10.0);
+          : (isSpeaking ? 16.0 : 10.0);
       final double glowWidth =
-          baseGlowWidth * (1.0 + (soundLevel / 140.0)).clamp(1.0, 1.12);
-      final double baseOpacity = isListening ? 0.6 : (isSpeaking ? 0.55 : 0.32);
-      final double glowOpacity = (baseOpacity + (soundLevel / 40.0)).clamp(
-        0.0,
-        0.88,
-      );
+          baseGlowWidth *
+          (1.0 + (soundLevel / 140.0)).clamp(1.0, 1.18) *
+          (isSpeaking ? 1.12 : 1.0);
+      final double baseOpacity = isListening ? 0.6 : (isSpeaking ? 0.65 : 0.32);
+      final double glowOpacity =
+          (baseOpacity + (soundLevel / 36.0) + (isSpeaking ? 0.12 : 0.0)).clamp(
+            0.0,
+            0.98,
+          );
 
       final Color baseGlowColor = isListening
           ? const Color(0xFFFF1A1A)
@@ -186,9 +192,28 @@ class Mini3DPainter extends CustomPainter {
 
       final Path path = Path();
       for (double t = 0; t <= 2 * pi; t += 0.3) {
-        double x = baseRadius * cos(t);
-        double y = baseRadius * sin(t);
-        double z = baseRadius * sin(t + orbitOffset);
+        // Morph radius when thinking to create spikes/erratic behavior. We use a
+        // combination of sinusoidal terms to create pseudo-random spikes that are
+        // still deterministic and cheap to compute.
+        double spikeFactor = 1.0;
+        if (isThinking) {
+          final double spikeAmp = 0.16; // intensity of spikes
+          final double n1 = sin(t * 6.0 + progress * 2.0 * pi * 2.0 + i);
+          final double n2 = 0.5 * cos(t * 11.0 - progress * 2.0 * pi + i * 0.7);
+          final double noise = (n1 + n2) * 0.5; // -1..1-ish
+          spikeFactor = (1.0 + spikeAmp * noise).clamp(0.7, 1.35);
+        }
+
+        // Slight additional widening when speaking (keeps ring rounded)
+        final double speakingMorph = isSpeaking
+            ? (1.0 + 0.06 * (1 + sin(progress * 2 * pi)) * 0.5)
+            : 1.0;
+
+        final double finalRadius = baseRadius * spikeFactor * speakingMorph;
+
+        double x = finalRadius * cos(t);
+        double y = finalRadius * sin(t);
+        double z = finalRadius * sin(t + orbitOffset);
 
         double rx = x * cos(rotationSpeed) + z * sin(rotationSpeed);
         double rz = -x * sin(rotationSpeed) + z * cos(rotationSpeed);
@@ -214,6 +239,7 @@ class Mini3DPainter extends CustomPainter {
   bool shouldRepaint(covariant Mini3DPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.isListening != isListening ||
+        oldDelegate.isThinking != isThinking ||
         oldDelegate.isSpeaking != isSpeaking ||
         oldDelegate.soundLevel != soundLevel ||
         oldDelegate.emotion != emotion;
