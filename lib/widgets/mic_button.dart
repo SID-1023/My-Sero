@@ -14,11 +14,9 @@ class SeroMicButton extends StatelessWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      // Using Long Press to trigger the mic
-      onLongPressStart: (_) {
-        if (voiceProvider.isInitialized) {
-          voiceProvider.startListening();
-        } else {
+      // Tap to toggle listening (start/stop)
+      onTap: () {
+        if (!voiceProvider.isInitialized) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -32,13 +30,9 @@ class SeroMicButton extends StatelessWidget {
               ),
             ),
           );
+          return;
         }
-      },
-      onLongPressEnd: (_) {
-        if (voiceProvider.isListening) voiceProvider.stopListening();
-      },
-      onTap: () {
-        // If currently listening, a single tap should stop listening
+
         if (voiceProvider.isListening) {
           voiceProvider.stopListening();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -47,16 +41,15 @@ class SeroMicButton extends StatelessWidget {
               duration: Duration(milliseconds: 700),
             ),
           );
-          return;
+        } else {
+          voiceProvider.startListening();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Listening…"),
+              duration: Duration(milliseconds: 700),
+            ),
+          );
         }
-
-        // Otherwise, provide feedback that they should hold to speak
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Hold the orb to speak"),
-            duration: Duration(seconds: 1),
-          ),
-        );
       },
       child: Opacity(
         opacity: voiceProvider.isInitialized ? 1.0 : 0.45,

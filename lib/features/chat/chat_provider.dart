@@ -66,5 +66,22 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clear messages in the active chat (keeps the session but resets title/messages)
+  void clear() {
+    if (_activeChat == null) return;
+
+    _activeChat = ChatSession(
+      id: _activeChat!.id,
+      title: 'New Chat',
+      createdAt: _activeChat!.createdAt,
+      messages: [],
+    );
+
+    final idx = _chats.indexWhere((c) => c.id == _activeChat!.id);
+    if (idx >= 0) _chats[idx] = _activeChat!;
+
+    notifyListeners();
+  }
+
   String _id() => Random().nextInt(999999).toString();
 }

@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'voice_output.dart';
 import '../chat/models/chat_message.dart';
 import '../chat/chat_provider.dart';
+import '../../core/sero_commands.dart';
 
 /// Emotion categories derived from user input
 enum Emotion { neutral, calm, sad, stressed }
@@ -24,6 +25,41 @@ class VoiceInputProvider extends ChangeNotifier {
   bool _isThinking = false;
   bool _isSpeaking = false;
   bool _autoListenAfterResponse = true;
+
+  // Tunables for listening behavior
+  Duration _pauseFor = const Duration(
+    seconds: 2,
+  ); // default: 2s to avoid false stops
+  String? _lastStatus;
+  final List<String> _statusLog = [];
+
+  // Continuous listening support
+  bool _continuousListening = false;
+  String _lastProcessedText = '';
+  Duration _continuousRestartDelay = const Duration(milliseconds: 400);
+
+  /// Set the pause duration used by the speech listener (helps tune silence detection)
+  void setPauseFor(Duration d) {
+    _pauseFor = d;
+  }
+
+  /// Enable or disable continuous listening. When enabled, the provider will
+  /// automatically restart listening after processing a final result.
+  void setContinuousListening(bool enabled) {
+    _continuousListening = enabled;
+    if (enabled && !_isListening) startListening();
+    notifyListeners();
+  }
+
+  /// Tune how long to wait before restarting listening in continuous mode
+  void setContinuousRestartDelay(Duration d) {
+    _continuousRestartDelay = d;
+  }
+
+  /// Retrieve a short status log for diagnostics
+  List<String> get statusLog => List.unmodifiable(_statusLog);
+
+  String? get lastStatus => _lastStatus;
 
   /* ================= AUDIO LEVEL ================= */
 
@@ -78,6 +114,8 @@ class VoiceInputProvider extends ChangeNotifier {
     await openAppSettings();
   }
 
+  String? _localeId;
+
   /* ================= INITIALIZATION ================= */
 
   Future<bool> initSpeech() async {
@@ -95,7 +133,47 @@ class VoiceInputProvider extends ChangeNotifier {
     }
 
     try {
-      _isInitialized = await _speech.initialize();
+      // Initialize with status & error callbacks so we can react quickly
+      _isInitialized = await _speech.initialize(
+        onStatus: (status) {
+          // Keep a short status log to help diagnose devices that terminate early
+          _lastStatus = status;
+          _statusLog.insert(0, '${DateTime.now().toIso8601String()}:$status');
+          if (_statusLog.length > 20) _statusLog.removeLast();
+
+          if (status == 'listening') {
+            _isListening = true;
+          } else if (status == 'notListening' || status == 'done') {
+            _isListening = false;
+          }
+          notifyListeners();
+        },
+        onError: (error) {
+          _errorMessage = error.errorMsg;
+          _isListening = false;
+          _statusLog.insert(
+            0,
+            '${DateTime.now().toIso8601String()}:ERROR:${error.errorMsg}',
+          );
+          if (_statusLog.length > 20) _statusLog.removeLast();
+          notifyListeners();
+        },
+      );
+
+      // Capture system locale to improve recognition accuracy
+      try {
+        final systemLocale = await _speech.systemLocale();
+        _localeId = systemLocale?.localeId;
+      } catch (_) {
+        _localeId = null;
+      }
+
+      // If initialization succeeded but returned false, provide guidance
+      if (!_isInitialized) {
+        _errorMessage = 'Speech recognition not available on this device.';
+        notifyListeners();
+      }
+
       notifyListeners();
       return _isInitialized;
     } catch (e) {
@@ -105,9 +183,79 @@ class VoiceInputProvider extends ChangeNotifier {
     }
   }
 
+  /// Run a quick diagnostic to help surface why the microphone may not work.
+  Future<Map<String, Object?>> diagnoseMicrophone() async {
+    final map = <String, Object?>{};
+
+    final perm = await Permission.microphone.status;
+    map['permission'] = perm.toString();
+    map['pauseForMs'] = _pauseFor.inMilliseconds;
+    map['lastStatus'] = _lastStatus;
+    map['statusLog'] = _statusLog.take(6).toList();
+
+    try {
+      if (!_isInitialized) {
+        map['initialized'] = await initSpeech();
+      } else {
+        map['initialized'] = true;
+      }
+
+      try {
+        final systemLocale = await _speech.systemLocale();
+        map['systemLocale'] = systemLocale?.localeId;
+      } catch (e) {
+        map['systemLocale'] = null;
+      }
+
+      try {
+        final locales = await _speech.locales();
+        map['availableLocales'] = locales
+            ?.map((l) => l.localeId)
+            .take(6)
+            .toList();
+      } catch (_) {
+        map['availableLocales'] = null;
+      }
+
+      map['errorMessage'] = _errorMessage;
+    } catch (e) {
+      map['diagnoseError'] = e.toString();
+    }
+
+    // Update public error message for quick UI visibility
+    if (map['initialized'] == true &&
+        (map['permission'] as String).contains('granted')) {
+      _errorMessage = null;
+    } else if ((map['permission'] as String).contains('denied')) {
+      _errorMessage =
+          'Microphone permission denied. Open settings to allow microphone access.';
+    }
+
+    notifyListeners();
+    return map;
+  }
+
+  /// Returns a short, human readable diagnostic summary for displaying to users
+  Future<String> getMicrophoneDiagnosticSummary() async {
+    final diag = await diagnoseMicrophone();
+    final permission = diag['permission'];
+    final initialized = diag['initialized'];
+    final sysLocale = diag['systemLocale'];
+
+    final parts = <String>[];
+    parts.add('Permission: $permission');
+    parts.add('Initialized: $initialized');
+    if (sysLocale != null) parts.add('Locale: $sysLocale');
+    if (diag['errorMessage'] != null)
+      parts.add('Error: ${diag['errorMessage']}');
+
+    return parts.join(' • ');
+  }
+
   /* ================= VOICE LISTENING ================= */
 
-  void startListening() async {
+  /// Starts listening. Tries on-device first (fast) and falls back if necessary.
+  void startListening({bool useOnDevice = true}) async {
     if (_isListening || _isSpeaking) return;
 
     if (!_isInitialized) {
@@ -122,8 +270,22 @@ class VoiceInputProvider extends ChangeNotifier {
     try {
       await _speech.listen(
         onResult: (result) {
+          // Update partial results for instant UI feedback
           _lastWords = result.recognizedWords;
           notifyListeners();
+
+          // If this is a final recognition result, process it immediately.
+          // This avoids waiting for a manual stop and enables quick interactions
+          // similar to ChatGPT/Gemini voice behavior.
+          if (result.finalResult) {
+            _processRecognizedText(result.recognizedWords, speak: true);
+
+            if (_continuousListening) {
+              Future.delayed(_continuousRestartDelay, () {
+                if (!_isSpeaking && !_isListening) startListening();
+              });
+            }
+          }
         },
         onSoundLevelChange: (level) {
           _soundLevel = level;
@@ -132,8 +294,27 @@ class VoiceInputProvider extends ChangeNotifier {
               _soundLevel * _soundSmoothing;
           notifyListeners();
         },
+        // Fast & accurate settings
+        listenMode: ListenMode.dictation,
+        partialResults: true,
+        pauseFor: _pauseFor,
+        listenFor: const Duration(seconds: 30),
+        cancelOnError: true,
+        localeId: _localeId,
+        // Prefer on-device recognition when available for lower latency
+        onDevice: useOnDevice,
       );
     } catch (e) {
+      // If on-device caused issues, retry without it once
+      if (useOnDevice) {
+        _errorMessage =
+            'On-device listen failed, retrying with server-based recognition.';
+        notifyListeners();
+        await Future.delayed(const Duration(milliseconds: 50));
+        startListening(useOnDevice: false);
+        return;
+      }
+
       _errorMessage = 'Listen error: $e';
       _isListening = false;
       notifyListeners();
@@ -153,8 +334,33 @@ class VoiceInputProvider extends ChangeNotifier {
     notifyListeners();
 
     if (_lastWords.isNotEmpty) {
-      _handleUserInput(_lastWords, speak: true);
+      _processRecognizedText(_lastWords, speak: true);
+      _lastWords = '';
     }
+  }
+
+  /// Safely process recognized text (avoids duplicate handling and stops the
+  /// recognition engine before passing the text through the input pipeline).
+  void _processRecognizedText(String text, {bool speak = true}) {
+    final clean = text.trim();
+    if (clean.isEmpty) return;
+    if (clean == _lastProcessedText) return; // ignore duplicates
+
+    _lastProcessedText = clean;
+
+    // Stop listening to avoid capturing the TTS output or continuing recognition
+    if (_isListening) {
+      try {
+        _speech.stop();
+      } catch (_) {}
+      _isListening = false;
+    }
+
+    _lastWords = clean;
+    notifyListeners();
+
+    // Delegate into the existing handler which updates UI and finishes workflow
+    _handleUserInput(clean, speak: speak, showOverlay: true);
   }
 
   /* ================= KEYBOARD INPUT ================= */
@@ -230,33 +436,96 @@ class VoiceInputProvider extends ChangeNotifier {
     bool suppressAutoListen = false,
     bool showOverlay = true,
   }) async {
-    final response = await _fetchAIResponse(input);
+    // Enter thinking state and classify emotion early
+    if (showOverlay) {
+      _isThinking = true;
+      _currentEmotion = _classifyEmotion(input);
+      notifyListeners();
+    }
 
-    // SERO message → delegate to ChatProvider
+    String response;
+
+    // 1️⃣ Check local command engine first
+    final intent = SeroCommandHandler.determineIntent(input);
+    if (intent != null) {
+      response = _handleLocalIntent(intent);
+    } else {
+      // 2️⃣ Fall back to AI
+      response = await _fetchAIResponse(input);
+    }
+
+    // Add Sero message to chat history
     _chatProvider.addMessage(text: response, sender: MessageSender.sero);
 
-    // Only update overlay-related state when requested
+    // Update overlay state
     if (showOverlay) {
       _lastResponse = response;
       _isThinking = false;
       notifyListeners();
     }
 
-    if (speak) {
+    // Speak the response if requested
+    if (speak && response.isNotEmpty) {
+      // Ensure we aren't listening while speaking to avoid picking up TTS
+      if (_isListening) {
+        try {
+          await _speech.stop();
+        } catch (_) {}
+        _isListening = false;
+        notifyListeners();
+      }
+
       _isSpeaking = true;
       notifyListeners();
 
-      await _voiceOutput.speak(response);
+      // Use onComplete callback so UI updates exactly when TTS finishes
+      await _voiceOutput.speak(
+        response,
+        onComplete: () {
+          _isSpeaking = false;
+          notifyListeners();
+        },
+      );
 
+      // Ensure speaking flag is cleared if onComplete wasn't called for any reason
       _isSpeaking = false;
       notifyListeners();
     }
 
+    // Optionally resume listening after a short delay
     if (!suppressAutoListen && _autoListenAfterResponse) {
       await Future.delayed(const Duration(milliseconds: 800));
       if (!_isListening && !_isThinking) {
         startListening();
       }
+    }
+  }
+
+  /// Handle locally recognized intents (fast, deterministic responses and actions)
+  String _handleLocalIntent(String intent) {
+    switch (intent) {
+      case 'greeting':
+        return "Greetings. I am online and ready.";
+      case 'time':
+        final now = DateTime.now();
+        return "The current time is ${now.hour}:${now.minute.toString().padLeft(2, '0')}.";
+      case 'settings':
+        // Open settings (provided by this provider)
+        openSettings();
+        return "Opening your system settings now.";
+      case 'identity':
+        return "I am Sero. A digital presence designed to perceive and respond to your emotions.";
+      case 'navigation_home':
+        // We don't have a BuildContext here; a future task could publish an
+        // event that the UI listens to for navigation. For now, respond.
+        return "Returning to the home interface.";
+      case 'app_exit':
+        return "Okay, exiting is not supported yet. I'll remember the intent.";
+      case 'clear':
+        _chatProvider.clear();
+        return "Chat cleared.";
+      default:
+        return "Command recognized, but I am still learning how to execute it.";
     }
   }
 
