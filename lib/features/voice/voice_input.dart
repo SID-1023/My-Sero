@@ -474,12 +474,18 @@ class VoiceInputProvider extends ChangeNotifier {
         // Add reply and speak if requested
         _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
         if (speak && msg.isNotEmpty) await _voiceOutput.speak(msg);
+
+        // Ensure thinking state stops
+        _isThinking = false;
+        notifyListeners();
         return;
       } else {
         final msg =
             'Opening apps by voice is currently supported on Android only.';
         _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
         if (speak) await _voiceOutput.speak(msg);
+        _isThinking = false;
+        notifyListeners();
         return;
       }
     }
@@ -605,50 +611,140 @@ class VoiceInputProvider extends ChangeNotifier {
 
   // Small alias table to recognize common short names
   static const Map<String, List<String>> _appAliases = {
-    // Social
-    'instagram': ['insta', 'instagram'],
-    'facebook': ['facebook', 'fb'],
-    'messenger': ['fb-messenger', 'messenger'],
-    'twitter': ['x', 'twitter'],
-    'threads': ['threads'],
-    'linkedin': ['linkedin'],
-    'snapchat': ['snapchat'],
-    'whatsapp': ['whatsapp', 'wa'],
-    'telegram': ['telegram', 'tg'],
+    // --- Social & Communication ---
+    'instagram': ['insta', 'ig', 'reels', 'instagram'],
+    'facebook': ['fb', 'facebook', 'meta'],
+    'messenger': ['fb-messenger', 'messenger', 'chat'],
+    'twitter': ['x', 'twitter', 'twt'],
+    'threads': ['threads', 'meta threads'],
+    'linkedin': ['linkedin', 'jobs', 'professional'],
+    'snapchat': ['snap', 'snapchat', 'sc'],
+    'whatsapp': ['whatsapp', 'wa', 'watsapp'],
+    'telegram': ['telegram', 'tg', 'tele'],
+    'discord': ['discord', 'dc', 'gaming chat'],
+    'reddit': ['reddit', 'forum'],
+    'pinterest': ['pinterest', 'pin', 'ideas'],
+    'tiktok': ['tiktok', 'tk', 'douyin'],
+    'skype': ['skype', 'video call'],
+    'zoom': ['zoom', 'meeting', 'video conference'],
+    'teams': ['teams', 'microsoft teams', 'msteams'],
+    'slack': ['slack', 'workspace'],
+    'signal': ['signal', 'private messenger'],
+    'viber': ['viber'],
+    'line': ['line messenger'],
+    'wechat': ['wechat', 'weixin'],
 
-    // Google / System
-    'chrome': ['chrome', 'google chrome', 'googlechrome'],
-    'gmail': ['gmail'],
-    'drive': ['drive'],
-    'photos': ['photos'],
-    'play store': ['play store', 'playstore', 'google play'],
-    'google pay': ['gpay', 'google pay'],
-    'assistant': ['assistant', 'google assistant'],
-    'maps': ['maps', 'google maps', 'comgooglemaps'],
+    // --- Google / System Apps ---
+    'notes': [
+      'notes', 'keep', 'memo', 'notepad',
+      'com.google.android.keep', // Google Keep
+      'com.samsung.android.app.notes', // Samsung Notes
+      'com.miui.notes', // Xiaomi Notes
+    ],
+    'album': [
+      'album', 'gallery', 'photos', 'images',
+      'com.android.gallery3d', // Standard Android
+      'com.sec.android.gallery3d', // Samsung
+      'com.miui.gallery', // Xiaomi/Redmi
+    ],
+    'chrome': ['chrome', 'google chrome', 'browser'],
+    'gmail': ['gmail', 'google mail', 'email'],
+    'drive': ['drive', 'google drive', 'cloud storage'],
+    'photos': ['photos', 'google photos', 'gallery', 'album', 'images', 'pics'],
+    'play store': ['play store', 'playstore', 'google play', 'market'],
+    'google pay': ['gpay', 'google pay', 'wallet'],
+    'assistant': ['assistant', 'google assistant', 'hey google'],
+    'maps': ['maps', 'google maps', 'navigation', 'gps', 'comgooglemaps'],
+    'camera': ['camera', 'cam', 'selfie', 'video recorder', 'lens'],
+    'calendar': ['calendar', 'cal', 'google calendar', 'events'],
+    'keep': ['keep', 'google keep', 'notes'],
+    'clock': ['clock', 'alarm', 'timer', 'stopwatch'],
+    'calculator': ['calculator', 'calc'],
+    'files': ['files', 'file manager', 'explorer', 'downloads'],
+    'settings': ['settings', 'config', 'setup', 'preferences'],
+    'contacts': ['contacts', 'people', 'address book'],
+    'phone': ['phone', 'dialer', 'calls'],
+    'messages': ['messages', 'message', 'sms', 'text'],
+    'youtube': ['youtube', 'yt', 'videos'],
 
-    // Shopping
+    // --- Shopping & E-Commerce ---
     'amazon': ['amazon', 'amazon shopping', 'amazon prime'],
-    'flipkart': ['flipkart'],
+    'flipkart': ['flipkart', 'fk'],
     'myntra': ['myntra'],
     'ajio': ['ajio'],
-    'snapdeal': ['snapdeal'],
+    'meesho': ['meesho'],
+    'nykaa': ['nykaa'],
+    'ebay': ['ebay'],
+    'aliexpress': ['aliexpress'],
+    'shein': ['shein'],
+    'temu': ['temu'],
+    'etsy': ['etsy'],
+    'walmart': ['walmart'],
+    'target': ['target'],
+    'shopee': ['shopee'],
 
-    // OTT / Music
-    'netflix': ['netflix'],
-    'prime video': ['prime video', 'amazon prime video'],
-    'hotstar': ['hotstar', 'disney hotstar'],
+    // --- OTT, Video & Music ---
+    'netflix': ['netflix', 'movies'],
+    'prime video': ['prime video', 'amazon prime video', 'pv'],
+    'hotstar': ['hotstar', 'disney hotstar', 'disney+'],
     'disney': ['disney', 'disney plus'],
-    'spotify': ['spotify'],
-    'youtube music': ['youtube music'],
-    'jio cinema': ['jio cinema'],
+    'hulu': ['hulu'],
+    'hbo max': ['hbo', 'max'],
+    'crunchyroll': ['crunchyroll', 'anime'],
+    'spotify': ['spotify', 'music'],
+    'youtube music': ['youtube music', 'yt music'],
+    'apple music': ['apple music'],
+    'soundcloud': ['soundcloud'],
+    'shazam': ['shazam', 'song id'],
+    'jio cinema': ['jio cinema', 'jiocinema'],
     'sony liv': ['sonyliv', 'sony liv'],
     'zee5': ['zee5'],
+    'voot': ['voot'],
+    'gaana': ['gaana'],
+    'wynk': ['wynk'],
 
-    // Messaging & Calls
-    'messages': ['messages', 'message'],
-    'phone': ['phone', 'dialer'],
-    'contacts': ['contacts'],
-    'truecaller': ['truecaller'],
+    // --- AI & Productivity ---
+    'chatgpt': ['chatgpt', 'openai', 'gpt', 'ai chat'],
+    'gemini': ['gemini', 'google ai', 'bard'],
+    'copilot': ['copilot', 'microsoft ai', 'bing'],
+    'claude': ['claude', 'anthropic'],
+    'canva': ['canva', 'design', 'graphic'],
+    'notion': ['notion', 'workspace', 'wiki'],
+    'evernote': ['evernote'],
+    'adobe acrobat': ['pdf', 'acrobat', 'reader'],
+    'wps office': ['wps', 'office', 'word', 'excel'],
+    'dropbox': ['dropbox'],
+    'onedrive': ['onedrive', 'microsoft cloud'],
+
+    // --- Food, Travel & Delivery ---
+    'zomato': ['zomato', 'food delivery'],
+    'swiggy': ['swiggy', 'instamart'],
+    'ubereats': ['uber eats', 'food'],
+    'uber': ['uber', 'cab', 'taxi'],
+    'ola': ['ola'],
+    'rapido': ['rapido', 'bike taxi'],
+    'airbnb': ['airbnb', 'hotel'],
+    'booking': ['booking.com', 'hotels'],
+    'irctc': ['irctc', 'train'],
+    'makemytrip': ['mmt', 'makemytrip'],
+
+    // --- Finance & Payments ---
+    'phonepe': ['phonepe', 'pp'],
+    'paytm': ['paytm'],
+    'paypal': ['paypal'],
+    'venmo': ['venmo'],
+    'cashapp': ['cash app'],
+    'binance': ['binance', 'crypto'],
+    'coinbase': ['coinbase'],
+    'truecaller': ['truecaller', 'caller id'],
+
+    // --- Health & Lifestyle ---
+    'strava': ['strava', 'running', 'cycling'],
+    'fitbit': ['fitbit'],
+    'myfitnesspal': ['calories', 'diet', 'fitness'],
+    'calm': ['calm', 'meditation', 'sleep'],
+    'duolingo': ['duolingo', 'languages'],
+    'headspace': ['headspace'],
   };
 
   // Simple Levenshtein distance implementation for fuzzy matching
@@ -676,35 +772,36 @@ class VoiceInputProvider extends ChangeNotifier {
     return dp[n][m];
   }
 
-  // FIX: Application changed to AppInfo
+  // FIX: Updated to prioritize Aliases and System Packages
   int _scoreAppMatch(AppInfo app, String name) {
     final n = (app.appName ?? "").toLowerCase();
     final p = (app.packageName ?? "").toLowerCase();
     final lowerName = name.toLowerCase();
 
-    // Exact match is best
-    if (n == lowerName) return 1000;
-
-    var score = 0;
-
-    // Containment checks
-    if (n.contains(lowerName)) score += 400;
-    if (p.contains(lowerName)) score += 300;
-
-    // Token prefix checks (helps partial words like 'insta')
-    final tokens = n.split(RegExp(r'\s+'));
-    if (tokens.any((t) => t.startsWith(lowerName))) score += 250;
-
-    // Alias checks
+    // 1. Alias Match (Highest Priority)
     for (final entry in _appAliases.entries) {
-      final key = entry.key;
-      final aliases = entry.value;
-      if (aliases.any((a) => a == lowerName) && n.contains(key)) {
-        score += 500;
+      if (entry.value.contains(lowerName)) {
+        // If the alias matches the app name or package name specifically
+        if (p.contains(entry.key) || n.contains(entry.key)) {
+          return 2000;
+        }
       }
     }
 
-    // Levenshtein penalty - the closer the app name is, the better
+    // 2. Exact Match
+    if (n == lowerName) return 1500;
+
+    var score = 0;
+
+    // 3. Containment checks
+    if (n.contains(lowerName)) score += 500;
+    if (p.contains(lowerName)) score += 400;
+
+    // 4. Token prefix checks
+    final tokens = n.split(RegExp(r'\s+'));
+    if (tokens.any((t) => t.startsWith(lowerName))) score += 250;
+
+    // 5. Levenshtein penalty
     final ld = _levenshteinDistance(n, lowerName);
     score -= ld * 30;
     final ld2 = _levenshteinDistance(p, lowerName);
@@ -716,23 +813,22 @@ class VoiceInputProvider extends ChangeNotifier {
   /// Attempts to open an installed Android app by fuzzy matching the app name.
   Future<bool> _openAppByName(String name) async {
     try {
-      // FIX: DeviceApps changed to FlutterDeviceApps
+      // FIX: Changed includeSystem to true so Album/Notes can be found
       final apps = await FlutterDeviceApps.listApps(
-        includeSystem: false,
+        includeSystem: true,
         onlyLaunchable: true,
       );
 
       final lowerName = name.toLowerCase();
 
       if (apps.isEmpty) {
-        final msg = "I couldn't find any user-installed apps on this device.";
+        final msg = "I couldn't find any apps on this device.";
         _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
         await _voiceOutput.speak(msg);
         return false;
       }
 
       // Score every candidate and pick the best match
-      // FIX: Application changed to AppInfo
       final scored = <MapEntry<AppInfo, int>>[];
       for (final a in apps) {
         final s = _scoreAppMatch(a, lowerName);
@@ -743,16 +839,14 @@ class VoiceInputProvider extends ChangeNotifier {
 
       final top = scored.first;
 
-      // If the top score passes a threshold, open it
-      const threshold = 150;
-      if (top.value >= threshold) {
-        // FIX: DeviceApps changed to FlutterDeviceApps
+      // Threshold check
+      if (top.value >= 150) {
         return await FlutterDeviceApps.openApp(top.key.packageName ?? "");
       }
 
-      // Otherwise offer helpful suggestions to the user
+      // Otherwise offer helpful suggestions
       final suggestions = scored
-          .where((e) => e.value > -1000)
+          .where((e) => e.value > 0)
           .take(5)
           .map((e) => e.key.appName)
           .toList();
@@ -764,7 +858,6 @@ class VoiceInputProvider extends ChangeNotifier {
       _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
       await _voiceOutput.speak(msg);
 
-      // Indicate to the caller that we already responded with suggestions
       _lastOpenHandled = true;
       return false;
     } catch (e) {
@@ -777,14 +870,14 @@ class VoiceInputProvider extends ChangeNotifier {
   /// List installed user apps, post to chat, and speak a brief summary.
   Future<void> _listInstalledAppsAndShow({int maxToSpeak = 8}) async {
     try {
-      // FIX: DeviceApps changed to FlutterDeviceApps
+      // FIX: Changed includeSystem to true
       final apps = await FlutterDeviceApps.listApps(
-        includeSystem: false,
+        includeSystem: true,
         onlyLaunchable: true,
       );
 
       if (apps.isEmpty) {
-        final msg = 'No user-installed apps found on this device.';
+        final msg = 'No apps found on this device.';
         _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
         await _voiceOutput.speak(msg);
         return;
@@ -795,16 +888,14 @@ class VoiceInputProvider extends ChangeNotifier {
 
       final names = apps.map((a) => a.appName ?? "").toList();
 
-      // Post a concise list (trimmed to avoid spamming the chat)
       final showCount = names.length > 50 ? 50 : names.length;
       final shortList = names.take(showCount).join(', ');
       final chatMsg =
-          'Found $count user-installed apps: $shortList${names.length > showCount ? ', ...' : ''}';
+          'Found $count apps: $shortList${names.length > showCount ? ', ...' : ''}';
       _chatProvider.addMessage(text: chatMsg, sender: MessageSender.sero);
 
-      // Speak only the first few to keep TTS brief
       final speakList = names.take(maxToSpeak).join(', ');
-      final speakMsg = 'I found $count apps. First ${maxToSpeak}: $speakList.';
+      final speakMsg = 'I found $count apps. Examples include: $speakList.';
       await _voiceOutput.speak(speakMsg);
     } catch (e) {
       _errorMessage = 'List apps failed: $e';
