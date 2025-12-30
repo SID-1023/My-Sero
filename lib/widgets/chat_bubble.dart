@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import '../features/chat/models/chat_message.dart'; // Ensure this path is correct
+import 'package:provider/provider.dart';
+import '../features/chat/models/chat_message.dart';
+import '../features/voice/voice_input.dart'; // To access the emotion color
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
@@ -8,62 +10,81 @@ class ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Note: Adjust 'message.isUser' or 'message.sender' based on your model field name
     final bool isUser = message.isUser;
+    final voiceProvider = context.watch<VoiceInputProvider>();
+
+    // Logic: User is dark obsidian, Sero is tinted with current emotion
+    final Color bubbleColor = isUser
+        ? const Color(0xFF14141B) // Deep space grey
+        : voiceProvider.emotionColor.withOpacity(0.08);
+
+    final Color borderColor = isUser
+        ? Colors.white.withOpacity(0.05)
+        : voiceProvider.emotionColor.withOpacity(0.2);
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: BoxConstraints(
-          // Ensures long messages don't touch the other side of the screen
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
         decoration: BoxDecoration(
-          // Colors for your "Cosmic Red" / Dark theme
-          color: isUser
-              ? const Color(0xFFB11226) // Deep Red for user
-              : Colors.white.withOpacity(0.08), // Translucent grey for Sero
-
+          color: bubbleColor,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            // The "Tail" effect:
-            // If user, keep bottom right sharp. If Sero, keep bottom left sharp.
-            bottomLeft: Radius.circular(isUser ? 16 : 0),
-            bottomRight: Radius.circular(isUser ? 0 : 16),
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(isUser ? 20 : 4), // Sharp "tail" for AI
+            bottomRight: Radius.circular(
+              isUser ? 4 : 20,
+            ), // Sharp "tail" for User
           ),
-          border: isUser
-              ? null
-              : Border.all(color: Colors.white.withOpacity(0.05)),
+          border: Border.all(color: borderColor, width: 0.8),
+          boxShadow: [
+            if (!isUser) // AI messages have a subtle "presence" glow
+              BoxShadow(
+                color: voiceProvider.emotionColor.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+          ],
         ),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start, // Keep text left-aligned inside bubble
+          crossAxisAlignment: isUser
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             Text(
               message.text,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: isUser ? Colors.white.withOpacity(0.9) : Colors.white,
                 fontSize: 15,
-                height: 1.3, // Improves readability for longer texts
+                height: 1.4,
+                letterSpacing: 0.2,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Row(
               mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Text(
-                  message.timeLabel,
+                  message.timeLabel, // e.g., "12:45 PM"
                   style: TextStyle(
-                    color: isUser ? Colors.white70 : Colors.white38,
-                    fontSize: 10,
+                    color: Colors.white.withOpacity(0.2),
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
                   ),
                 ),
                 if (isUser) ...[
                   const SizedBox(width: 4),
-                  const Icon(Icons.done_all, size: 12, color: Colors.white70),
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 10,
+                    color: Colors.white.withOpacity(0.2),
+                  ),
                 ],
               ],
             ),
