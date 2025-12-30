@@ -12,4 +12,22 @@ class ChatSession {
     required this.createdAt,
     required this.messages,
   });
+
+  /// The copyWith method is the standard way in Flutter to "update"
+  /// final fields. It returns a brand new object with the changes applied.
+  ChatSession copyWith({
+    String? id,
+    String? title,
+    DateTime? createdAt,
+    List<ChatMessage>? messages,
+  }) {
+    return ChatSession(
+      // The ?? operator means: "Use the new value if provided,
+      // otherwise keep the current value."
+      id: id ?? this.id,
+      title: title ?? this.title,
+      createdAt: createdAt ?? this.createdAt,
+      messages: messages ?? this.messages,
+    );
+  }
 }

@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:device_apps/device_apps.dart';
+// FIX: Updated to correct package import
+import 'package:flutter_device_apps/flutter_device_apps.dart';
 
 import 'voice_output.dart';
 import '../chat/models/chat_message.dart';
@@ -675,9 +676,10 @@ class VoiceInputProvider extends ChangeNotifier {
     return dp[n][m];
   }
 
-  int _scoreAppMatch(Application app, String name) {
-    final n = app.appName.toLowerCase();
-    final p = app.packageName.toLowerCase();
+  // FIX: Application changed to AppInfo
+  int _scoreAppMatch(AppInfo app, String name) {
+    final n = (app.appName ?? "").toLowerCase();
+    final p = (app.packageName ?? "").toLowerCase();
     final lowerName = name.toLowerCase();
 
     // Exact match is best
@@ -714,9 +716,10 @@ class VoiceInputProvider extends ChangeNotifier {
   /// Attempts to open an installed Android app by fuzzy matching the app name.
   Future<bool> _openAppByName(String name) async {
     try {
-      final apps = await DeviceApps.getInstalledApplications(
-        includeAppIcons: false,
-        includeSystemApps: false,
+      // FIX: DeviceApps changed to FlutterDeviceApps
+      final apps = await FlutterDeviceApps.listApps(
+        includeSystem: false,
+        onlyLaunchable: true,
       );
 
       final lowerName = name.toLowerCase();
@@ -729,7 +732,8 @@ class VoiceInputProvider extends ChangeNotifier {
       }
 
       // Score every candidate and pick the best match
-      final scored = <MapEntry<Application, int>>[];
+      // FIX: Application changed to AppInfo
+      final scored = <MapEntry<AppInfo, int>>[];
       for (final a in apps) {
         final s = _scoreAppMatch(a, lowerName);
         scored.add(MapEntry(a, s));
@@ -742,7 +746,8 @@ class VoiceInputProvider extends ChangeNotifier {
       // If the top score passes a threshold, open it
       const threshold = 150;
       if (top.value >= threshold) {
-        return await DeviceApps.openApp(top.key.packageName);
+        // FIX: DeviceApps changed to FlutterDeviceApps
+        return await FlutterDeviceApps.openApp(top.key.packageName ?? "");
       }
 
       // Otherwise offer helpful suggestions to the user
@@ -772,9 +777,10 @@ class VoiceInputProvider extends ChangeNotifier {
   /// List installed user apps, post to chat, and speak a brief summary.
   Future<void> _listInstalledAppsAndShow({int maxToSpeak = 8}) async {
     try {
-      final apps = await DeviceApps.getInstalledApplications(
-        includeAppIcons: false,
-        includeSystemApps: false,
+      // FIX: DeviceApps changed to FlutterDeviceApps
+      final apps = await FlutterDeviceApps.listApps(
+        includeSystem: false,
+        onlyLaunchable: true,
       );
 
       if (apps.isEmpty) {
@@ -784,10 +790,10 @@ class VoiceInputProvider extends ChangeNotifier {
         return;
       }
 
-      apps.sort((a, b) => a.appName.compareTo(b.appName));
+      apps.sort((a, b) => (a.appName ?? "").compareTo(b.appName ?? ""));
       final count = apps.length;
 
-      final names = apps.map((a) => a.appName).toList();
+      final names = apps.map((a) => a.appName ?? "").toList();
 
       // Post a concise list (trimmed to avoid spamming the chat)
       final showCount = names.length > 50 ? 50 : names.length;

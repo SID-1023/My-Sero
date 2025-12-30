@@ -5,46 +5,44 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0' # Updated to support modern Dart features
+  # Supporting Dart 3.10+ for modern features like dot shorthands
+  sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
   # --- CORE AI & DATA ---
-  # Google Gemini AI SDK (Stable version for 2025)
+  # Google Gemini AI SDK for advanced multimodal reasoning
   google_generative_ai: ^0.4.7
-  # Formatting AI responses (bold, lists, etc.)
+  # Renders AI responses with Markdown (supports LaTeX in latest versions)
   flutter_markdown: ^0.7.5
-  # Secure storage for your API Key
+  # FIX: Corrected to the actual latest stable version (Aug 2025)
   flutter_dotenv: ^6.0.0
 
   # --- VOICE & PERMISSIONS ---
-  # Voice Input (Speech to Text)
+  # Voice Input (Speech to Text) - Optimized for Android 15 & iOS 18
   speech_to_text: ^7.3.0
   # Voice Output (Text to Speech)
   flutter_tts: ^4.2.3
-  # Runtime permissions
-  permission_handler: ^11.3.1
+  # Critical for Mic and Package Visibility permissions
+  permission_handler: ^12.0.1
 
   # --- STATE & UI ---
-  # State Management
   provider: ^6.1.2
-  # UI animations
-  animate_do: ^3.3.4
-  # iOS-style icons
+  animate_do: ^4.2.0
   cupertino_icons: ^1.0.8
-  # Date/time formatting
   intl: ^0.19.0
-  # Fetching installed apps
-  device_apps: ^2.1.1
+  # Modern federated plugin for launching and listing apps
+  flutter_device_apps: ^0.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0 # Updated lints for better code quality
+  # Using the latest strict lints for Dart 3.10
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
   assets:
-    - .env
+    - .env # Ensure this file exists in your project root
