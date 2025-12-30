@@ -36,6 +36,9 @@ class VoiceInputProvider extends ChangeNotifier {
   String? _lastStatus;
   final List<String> _statusLog = [];
 
+  // Tracks whether the last open-app attempt already posted a message/suggestion
+  bool _lastOpenHandled = false;
+
   // Continuous listening support
   bool _continuousListening = false;
   String _lastProcessedText = '';
@@ -457,7 +460,12 @@ class VoiceInputProvider extends ChangeNotifier {
       final appName = openMatch.group(1)!.trim();
 
       if (Platform.isAndroid) {
+        _lastOpenHandled = false;
         final ok = await _openAppByName(appName);
+
+        // If _openAppByName already added a message/suggestion, don't duplicate it
+        if (_lastOpenHandled) return;
+
         final msg = ok
             ? 'Opening $appName.'
             : "I couldn't find '$appName' on this device.";
@@ -545,6 +553,10 @@ class VoiceInputProvider extends ChangeNotifier {
         return "Opening your system settings now.";
       case 'identity':
         return "I am Sero. A digital presence designed to perceive and respond to your emotions.";
+      case 'list_apps':
+        // Asynchronously enumerate installed apps and show summary
+        _listInstalledAppsAndShow();
+        return "Listing installed apps now.";
       case 'navigation_home':
         // We don't have a BuildContext here; a future task could publish an
         // event that the UI listens to for navigation. For now, respond.
@@ -590,6 +602,115 @@ class VoiceInputProvider extends ChangeNotifier {
 
   /* ================= APP OPENING (ANDROID) ================= */
 
+  // Small alias table to recognize common short names
+  static const Map<String, List<String>> _appAliases = {
+    // Social
+    'instagram': ['insta', 'instagram'],
+    'facebook': ['facebook', 'fb'],
+    'messenger': ['fb-messenger', 'messenger'],
+    'twitter': ['x', 'twitter'],
+    'threads': ['threads'],
+    'linkedin': ['linkedin'],
+    'snapchat': ['snapchat'],
+    'whatsapp': ['whatsapp', 'wa'],
+    'telegram': ['telegram', 'tg'],
+
+    // Google / System
+    'chrome': ['chrome', 'google chrome', 'googlechrome'],
+    'gmail': ['gmail'],
+    'drive': ['drive'],
+    'photos': ['photos'],
+    'play store': ['play store', 'playstore', 'google play'],
+    'google pay': ['gpay', 'google pay'],
+    'assistant': ['assistant', 'google assistant'],
+    'maps': ['maps', 'google maps', 'comgooglemaps'],
+
+    // Shopping
+    'amazon': ['amazon', 'amazon shopping', 'amazon prime'],
+    'flipkart': ['flipkart'],
+    'myntra': ['myntra'],
+    'ajio': ['ajio'],
+    'snapdeal': ['snapdeal'],
+
+    // OTT / Music
+    'netflix': ['netflix'],
+    'prime video': ['prime video', 'amazon prime video'],
+    'hotstar': ['hotstar', 'disney hotstar'],
+    'disney': ['disney', 'disney plus'],
+    'spotify': ['spotify'],
+    'youtube music': ['youtube music'],
+    'jio cinema': ['jio cinema'],
+    'sony liv': ['sonyliv', 'sony liv'],
+    'zee5': ['zee5'],
+
+    // Messaging & Calls
+    'messages': ['messages', 'message'],
+    'phone': ['phone', 'dialer'],
+    'contacts': ['contacts'],
+    'truecaller': ['truecaller'],
+  };
+
+  // Simple Levenshtein distance implementation for fuzzy matching
+  int _levenshteinDistance(String s, String t) {
+    final n = s.length;
+    final m = t.length;
+    if (n == 0) return m;
+    if (m == 0) return n;
+
+    final dp = List.generate(n + 1, (_) => List<int>.filled(m + 1, 0));
+    for (var i = 0; i <= n; i++) dp[i][0] = i;
+    for (var j = 0; j <= m; j++) dp[0][j] = j;
+
+    for (var i = 1; i <= n; i++) {
+      for (var j = 1; j <= m; j++) {
+        final cost = s[i - 1] == t[j - 1] ? 0 : 1;
+        dp[i][j] = [
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + cost,
+        ].reduce((a, b) => a < b ? a : b);
+      }
+    }
+
+    return dp[n][m];
+  }
+
+  int _scoreAppMatch(Application app, String name) {
+    final n = app.appName.toLowerCase();
+    final p = app.packageName.toLowerCase();
+    final lowerName = name.toLowerCase();
+
+    // Exact match is best
+    if (n == lowerName) return 1000;
+
+    var score = 0;
+
+    // Containment checks
+    if (n.contains(lowerName)) score += 400;
+    if (p.contains(lowerName)) score += 300;
+
+    // Token prefix checks (helps partial words like 'insta')
+    final tokens = n.split(RegExp(r'\s+'));
+    if (tokens.any((t) => t.startsWith(lowerName))) score += 250;
+
+    // Alias checks
+    for (final entry in _appAliases.entries) {
+      final key = entry.key;
+      final aliases = entry.value;
+      if (aliases.any((a) => a == lowerName) && n.contains(key)) {
+        score += 500;
+      }
+    }
+
+    // Levenshtein penalty - the closer the app name is, the better
+    final ld = _levenshteinDistance(n, lowerName);
+    score -= ld * 30;
+    final ld2 = _levenshteinDistance(p, lowerName);
+    score -= ld2 * 10;
+
+    return score;
+  }
+
   /// Attempts to open an installed Android app by fuzzy matching the app name.
   Future<bool> _openAppByName(String name) async {
     try {
@@ -600,29 +721,88 @@ class VoiceInputProvider extends ChangeNotifier {
 
       final lowerName = name.toLowerCase();
 
-      // Narrow down candidates by app name or package name containing the spoken name
-      final candidates = apps.where((a) {
-        final n = a.appName.toLowerCase();
-        final p = a.packageName.toLowerCase();
-        return n.contains(lowerName) || p.contains(lowerName);
-      }).toList();
-
-      if (candidates.isEmpty) return false;
-
-      // Prefer exact name match if any
-      var match = candidates.first;
-      for (final c in candidates) {
-        if (c.appName.toLowerCase() == lowerName) {
-          match = c;
-          break;
-        }
+      if (apps.isEmpty) {
+        final msg = "I couldn't find any user-installed apps on this device.";
+        _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
+        await _voiceOutput.speak(msg);
+        return false;
       }
 
-      return await DeviceApps.openApp(match.packageName);
+      // Score every candidate and pick the best match
+      final scored = <MapEntry<Application, int>>[];
+      for (final a in apps) {
+        final s = _scoreAppMatch(a, lowerName);
+        scored.add(MapEntry(a, s));
+      }
+
+      scored.sort((a, b) => b.value.compareTo(a.value));
+
+      final top = scored.first;
+
+      // If the top score passes a threshold, open it
+      const threshold = 150;
+      if (top.value >= threshold) {
+        return await DeviceApps.openApp(top.key.packageName);
+      }
+
+      // Otherwise offer helpful suggestions to the user
+      final suggestions = scored
+          .where((e) => e.value > -1000)
+          .take(5)
+          .map((e) => e.key.appName)
+          .toList();
+
+      final msg = suggestions.isNotEmpty
+          ? "I couldn't find '$name'. Did you mean: ${suggestions.join(', ')}?"
+          : "I couldn't find '$name' on this device.";
+
+      _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
+      await _voiceOutput.speak(msg);
+
+      // Indicate to the caller that we already responded with suggestions
+      _lastOpenHandled = true;
+      return false;
     } catch (e) {
       _errorMessage = 'Open app failed: $e';
       notifyListeners();
       return false;
+    }
+  }
+
+  /// List installed user apps, post to chat, and speak a brief summary.
+  Future<void> _listInstalledAppsAndShow({int maxToSpeak = 8}) async {
+    try {
+      final apps = await DeviceApps.getInstalledApplications(
+        includeAppIcons: false,
+        includeSystemApps: false,
+      );
+
+      if (apps.isEmpty) {
+        final msg = 'No user-installed apps found on this device.';
+        _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
+        await _voiceOutput.speak(msg);
+        return;
+      }
+
+      apps.sort((a, b) => a.appName.compareTo(b.appName));
+      final count = apps.length;
+
+      final names = apps.map((a) => a.appName).toList();
+
+      // Post a concise list (trimmed to avoid spamming the chat)
+      final showCount = names.length > 50 ? 50 : names.length;
+      final shortList = names.take(showCount).join(', ');
+      final chatMsg =
+          'Found $count user-installed apps: $shortList${names.length > showCount ? ', ...' : ''}';
+      _chatProvider.addMessage(text: chatMsg, sender: MessageSender.sero);
+
+      // Speak only the first few to keep TTS brief
+      final speakList = names.take(maxToSpeak).join(', ');
+      final speakMsg = 'I found $count apps. First ${maxToSpeak}: $speakList.';
+      await _voiceOutput.speak(speakMsg);
+    } catch (e) {
+      _errorMessage = 'List apps failed: $e';
+      notifyListeners();
     }
   }
 }

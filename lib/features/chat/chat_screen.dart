@@ -5,6 +5,7 @@ import '../chat/chat_provider.dart';
 import '../ui/keyboard_input_screen.dart';
 import '../../../widgets/chat_bubble.dart';
 import '../../../widgets/chat_composer.dart';
+import '../../../widgets/typing_indicator.dart'; // Ensure you created this file
 
 class ChatScreen extends StatefulWidget {
   final bool focusComposer;
@@ -20,81 +21,148 @@ class _ChatScreenState extends State<ChatScreen> {
   int _prevMessageCount = 0;
 
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!_scrollController.hasClients) return;
+    if (!_scrollController.hasClients) return;
 
-      // Wait a short moment for layout to settle (especially on navigation)
-      await Future.delayed(const Duration(milliseconds: 50));
-
-      try {
-        // For reversed lists the newest message is at offset 0.0
-        final target = 0.0;
-        await _scrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      } catch (_) {
-        // Fallback to immediate jump
-        if (_scrollController.hasClients) {
-          _scrollController.jumpTo(_scrollController.position.minScrollExtent);
-        }
-      }
-    });
+    // In a reversed list, the newest message is at offset 0.0
+    _scrollController.animateTo(
+      0.0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ChatProvider>();
-    final messages = provider.messages;
 
-    // If message count increased, scroll to bottom so user sees latest reply
+    // We get the list of messages.
+    // We DON'T need to .reversed.toList() here because ListView(reverse: true)
+    // handles the visual reversal. We just need to manage the logic index.
+    final messages = provider.messages;
+    final bool isTyping = provider.isTyping;
+
+    // Auto-scroll logic
     if (messages.length != _prevMessageCount) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       _prevMessageCount = messages.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     }
 
     return Scaffold(
-      // Prevent layout from jumping when IME hides/reopens during transitions
-      resizeToAvoidBottomInset: false,
+      backgroundColor: const Color(0xFF0B0B0F),
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: Text(provider.activeChat?.title ?? 'Chat'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        title: Text(
+          provider.activeChat?.title ?? 'Sero Chat',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white70),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            size: 20,
+            color: Colors.white70,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.white70),
+            onPressed: () => _showClearDialog(context, provider),
+          ),
+        ],
       ),
-      body: SafeArea(
-        child: messages.isEmpty
-            ? const Center(
-                child: Text(
-                  "Start a conversation with Sero",
-                  style: TextStyle(color: Colors.white38, fontSize: 15),
-                ),
-              )
-            : ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                reverse: true,
-                physics: const BouncingScrollPhysics(),
-                itemCount: messages.length,
-                itemBuilder: (_, index) {
-                  final msg = messages[messages.length - 1 - index];
-                  return ChatBubble(message: msg);
-                },
-              ),
+      body: Column(
+        children: [
+          Expanded(
+            child: messages.isEmpty && !isTyping
+                ? const Center(
+                    child: Text(
+                      "Start a conversation with Sero",
+                      style: TextStyle(color: Colors.white38, fontSize: 15),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    reverse: true, // Newest messages at the bottom
+                    physics: const BouncingScrollPhysics(),
+                    // Add 1 to itemCount if Sero is typing to make room for the indicator
+                    itemCount: messages.length + (isTyping ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      // 1. If typing is active, the very first item (index 0) is the indicator
+                      if (isTyping && index == 0) {
+                        return const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8.0),
+                            child: TypingIndicator(),
+                          ),
+                        );
+                      }
+
+                      // 2. Calculate the correct message index
+                      // If typing is showing, we subtract 1 from the index to get the message
+                      final messageIndex = isTyping ? index - 1 : index;
+
+                      // Since the list is reversed, the latest message in the list
+                      // is at the END of the provider's array.
+                      final message =
+                          messages[messages.length - 1 - messageIndex];
+
+                      return ChatBubble(message: message);
+                    },
+                  ),
+          ),
+
+          // Input Area
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 10 : 20,
+              left: 12,
+              right: 12,
+              top: 8,
+            ),
+            child: ChatComposer(autoFocus: widget.focusComposer),
+          ),
+        ],
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 8, right: 8),
-          child: ChatComposer(autoFocus: widget.focusComposer),
+    );
+  }
+
+  void _showClearDialog(BuildContext context, ChatProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A22),
+        title: const Text("Clear Chat", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "Do you want to delete all messages in this session?",
+          style: TextStyle(color: Colors.white70),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const KeyboardInputScreen())),
-        child: const Icon(Icons.edit),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "Cancel",
+              style: TextStyle(color: Colors.white38),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              provider.clear();
+              Navigator.pop(context);
+            },
+            child: const Text(
+              "Clear",
+              style: TextStyle(color: Color(0xFFB11226)),
+            ),
+          ),
+        ],
       ),
     );
   }

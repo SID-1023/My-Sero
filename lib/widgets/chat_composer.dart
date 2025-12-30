@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../features/voice/voice_input.dart';
-
 import '../features/chat/chat_screen.dart';
 
 class ChatComposer extends StatefulWidget {
@@ -12,12 +11,12 @@ class ChatComposer extends StatefulWidget {
   final Future<void> Function(String)? onSend;
 
   const ChatComposer({
-    Key? key,
+    super.key,
     this.autoClose = false,
     this.autoFocus = false,
     this.navigateToChatOnSend = false,
     this.onSend,
-  }) : super(key: key);
+  });
 
   @override
   State<ChatComposer> createState() => _ChatComposerState();
@@ -32,74 +31,154 @@ class _ChatComposerState extends State<ChatComposer> {
   void initState() {
     super.initState();
     if (widget.autoFocus) {
-      // Delay focus slightly to avoid Android IME focus fighting during
-      // route transitions (prevents keyboard flicker / focus loss).
-      Future.delayed(const Duration(milliseconds: 80), () {
-        if (mounted) {
-          FocusScope.of(context).requestFocus(_focusNode);
-        }
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) _focusNode.requestFocus();
       });
     }
   }
 
-  void _send(BuildContext context) async {
+  Future<void> _handleSend() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _isSending) return;
 
     setState(() => _isSending = true);
+    final voiceProvider = context.read<VoiceInputProvider>();
 
-    final provider = context.read<VoiceInputProvider>();
-
-    if (widget.onSend != null) {
-      await widget.onSend!(text);
-    } else {
-      // Stop listening if active and send as keyboard input (no overlay, no auto listen)
-      provider.stopListening();
-      provider.sendTextInput(
-        text,
-        suppressAutoListen: true,
-        showOverlay: false,
-      );
-    }
-
-    _controller.clear();
-
-    setState(() => _isSending = false);
-
-    if (widget.autoClose) {
-      // Close keyboard screen and optionally navigate to the Chat screen so user can read the reply
-      if (widget.navigateToChatOnSend) {
-        // Unfocus first to avoid IME panicking, then wait a short moment for the
-        // system keyboard to settle before replacing the route. This prevents a
-        // single frozen blurred frame being rendered on some Android devices.
-        FocusScope.of(context).unfocus();
-        await Future.delayed(const Duration(milliseconds: 120));
-
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const ChatScreen(focusComposer: true),
-            transitionDuration: const Duration(milliseconds: 120),
-            transitionsBuilder: (_, anim, __, child) =>
-                FadeTransition(opacity: anim, child: child),
-          ),
-        );
+    try {
+      if (widget.onSend != null) {
+        await widget.onSend!(text);
       } else {
-        // If we're just popping the keyboard input screen, also wait for the
-        // IME to settle after unfocusing so the blurred route does not linger.
-        FocusScope.of(context).unfocus();
-        await Future.delayed(const Duration(milliseconds: 120));
-        Navigator.of(context).maybePop();
+        voiceProvider.stopListening();
+        voiceProvider.sendTextInput(
+          text,
+          suppressAutoListen: true,
+          showOverlay: false,
+        );
       }
+
+      _controller.clear();
+
+      if (widget.autoClose) {
+        _focusNode.unfocus();
+        await Future.delayed(const Duration(milliseconds: 150));
+
+        if (widget.navigateToChatOnSend && mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => const ChatScreen(focusComposer: true),
+            ),
+          );
+        } else if (mounted) {
+          Navigator.of(context).maybePop();
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
-  void _toggleVoice(BuildContext context) {
-    final provider = context.read<VoiceInputProvider>();
-    if (provider.isListening) {
-      provider.stopListening();
-    } else {
-      provider.startListening();
-    }
+  @override
+  Widget build(BuildContext context) {
+    final voiceProvider = context.watch<VoiceInputProvider>();
+    final isListening = voiceProvider.isListening;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutQuad,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      // Voice Toggle Button
+                      IconButton(
+                        icon: Icon(
+                          isListening ? Icons.graphic_eq : Icons.mic,
+                          color: isListening
+                              ? const Color(0xFF1AFF6B)
+                              : Colors.white70,
+                        ),
+                        onPressed: () {
+                          if (isListening)
+                            voiceProvider.stopListening();
+                          else
+                            voiceProvider.startListening();
+                        },
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          maxLines: 4,
+                          minLines: 1,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: isListening
+                                ? 'Sero is listening...'
+                                : 'Type a message...',
+                            hintStyle: const TextStyle(color: Colors.white38),
+                            border: InputBorder.none,
+                          ),
+                          onSubmitted: (_) => _handleSend(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Optimized Send Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSending ? null : _handleSend,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isListening
+                          ? const Color(0xFFB11226)
+                          : const Color(0xFF1AFF6B),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      _isSending
+                          ? 'SENDING...'
+                          : (isListening ? 'STOP & SEND' : 'SEND MESSAGE'),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -107,121 +186,5 @@ class _ChatComposerState extends State<ChatComposer> {
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: bottom + 12),
-      child: SafeArea(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            margin: const EdgeInsets.only(
-              top: 12,
-              left: 12,
-              right: 12,
-              bottom: 0,
-            ),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.45),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.6),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Text composer
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.mic, color: Colors.white70),
-                        onPressed: () => _toggleVoice(context),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: TextField(
-                          controller: _controller,
-                          focusNode: _focusNode,
-                          minLines: 1,
-                          maxLines: 6,
-                          textInputAction: TextInputAction.newline,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: 'Type a message…',
-                            hintStyle: TextStyle(color: Colors.white38),
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          onSubmitted: (_) => _send(context),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                // Full-width CTA
-                SizedBox(
-                  width: double.infinity,
-                  child: ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _controller,
-                    builder: (_, value, __) {
-                      final isEmpty = value.text.trim().isEmpty;
-                      return ElevatedButton(
-                        onPressed: isEmpty || _isSending
-                            ? null
-                            : () => _send(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1AFF6B),
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          _isSending ? 'Sending...' : 'Send',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ), // Column
-          ), // Container
-        ), // BackdropFilter
-      ), // SafeArea
-    ); // AnimatedPadding
   }
 }

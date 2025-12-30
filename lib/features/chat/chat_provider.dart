@@ -7,19 +7,20 @@ class ChatProvider extends ChangeNotifier {
   final List<ChatSession> _chats = [];
   ChatSession? _activeChat;
 
+  // NEW: Track typing state
+  bool _isTyping = false;
+  bool get isTyping => _isTyping;
+
   List<ChatSession> get chats => _chats;
   ChatSession? get activeChat => _activeChat;
-
   List<ChatMessage> get messages => _activeChat?.messages ?? [];
 
-  /// Create first chat if app opens fresh
   void init() {
     if (_chats.isEmpty) {
       createNewChat();
     }
   }
 
-  /// Create new chat (ChatGPT-style)
   void createNewChat() {
     final chat = ChatSession(
       id: _id(),
@@ -33,16 +34,19 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Switch chat
   void openChat(ChatSession chat) {
     _activeChat = chat;
     notifyListeners();
   }
 
-  /// Add message
-  void addMessage({required String text, required MessageSender sender}) {
+  /// Updated AddMessage with automatic AI response simulation
+  Future<void> addMessage({
+    required String text,
+    required MessageSender sender,
+  }) async {
     if (_activeChat == null) return;
 
+    // 1. Add the actual message
     _activeChat!.messages.add(
       ChatMessage(
         id: _id(),
@@ -60,13 +64,45 @@ class ChatProvider extends ChangeNotifier {
         createdAt: _activeChat!.createdAt,
         messages: _activeChat!.messages,
       );
-      _chats[0] = _activeChat!;
+
+      // Update the chat in the list
+      final index = _chats.indexWhere((c) => c.id == _activeChat!.id);
+      if (index != -1) _chats[index] = _activeChat!;
     }
 
     notifyListeners();
+
+    // 2. If the user sent the message, trigger Sero's "Thinking" state
+    if (sender == MessageSender.user) {
+      await _simulateSeroResponse(text);
+    }
   }
 
-  /// Clear messages in the active chat (keeps the session but resets title/messages)
+  /// NEW: Simulation logic for the Typing Indicator
+  Future<void> _simulateSeroResponse(String userText) async {
+    _isTyping = true;
+    notifyListeners();
+
+    // Wait 2 seconds to show off the cool Typing Indicator
+    await Future.delayed(const Duration(seconds: 2));
+
+    String response = _generateSimpleResponse(userText);
+
+    _isTyping = false; // Hide indicator
+    addMessage(text: response, sender: MessageSender.sero);
+  }
+
+  String _generateSimpleResponse(String input) {
+    String lower = input.toLowerCase();
+    if (lower.contains("hello") || lower.contains("hi"))
+      return "Hello! I'm Sero. How are you feeling today?";
+    if (lower.contains("sad") || lower.contains("bad"))
+      return "I'm sorry you're feeling that way. I'm here to listen.";
+    if (lower.contains("happy") || lower.contains("good"))
+      return "That's wonderful! I love hearing positive news.";
+    return "I hear you. Can you tell me more about that?";
+  }
+
   void clear() {
     if (_activeChat == null) return;
 

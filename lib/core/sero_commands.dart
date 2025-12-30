@@ -17,6 +17,14 @@ class SeroCommandHandler {
     'volume_control': ['volume', 'mute', 'louder', 'quieter'],
     'app_exit': ['close app', 'exit', 'quit', 'stop sero'],
     'clear': ['clear screen', 'reset chat', 'start over'],
+    'list_apps': [
+      'list apps',
+      'show installed apps',
+      'what apps are installed',
+      'list installed apps',
+      'show apps',
+      'which apps are on this device',
+    ],
     // ADD NEW CATEGORIES HERE: Copilot will likely suggest 'weather', 'music', etc.
   };
 
