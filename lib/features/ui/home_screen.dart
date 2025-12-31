@@ -119,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen>
         Text(
           "I CAN SEARCH NEW CONTACTS",
           style: TextStyle(
-            color: Color(0xFFD50000),
+            color: Color.fromARGB(255, 14, 213, 0),
             fontSize: 10,
             fontWeight: FontWeight.w900,
             letterSpacing: 3,
@@ -132,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen>
           style: TextStyle(
             fontSize: 34,
             fontWeight: FontWeight.w700,
-            color: Color(0xFFFFB3B3),
+            color: Color.fromARGB(255, 14, 213, 0),
             height: 1.1,
           ),
         ),

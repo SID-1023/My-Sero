@@ -116,13 +116,13 @@ class Mini3DPainter extends CustomPainter {
     Color? emotionTint;
     switch (emotion) {
       case Emotion.calm:
-        emotionTint = const Color(0xFF4CAF50); // green
+        emotionTint = Color.fromARGB(255, 255, 0, 106); // green
         break;
       case Emotion.sad:
-        emotionTint = const Color(0xFF2196F3); // blue
+        emotionTint = const Color.fromARGB(255, 0, 100, 146); // blue
         break;
       case Emotion.stressed:
-        emotionTint = const Color(0xFFFF5252); // red
+        emotionTint = const Color.fromARGB(255, 106, 53, 0); // red
         break;
       default:
         emotionTint = null;
@@ -139,9 +139,17 @@ class Mini3DPainter extends CustomPainter {
           baseStroke * (1.0 + (soundLevel / 100.0)).clamp(1.0, 1.14);
 
       // Base colors are chosen to preserve previous contrast
+      // Base colors updated to your Vibrant Green theme
       final Color baseTubeColor = isListening
-          ? const Color(0xFFFF2E2E)
-          : (isSpeaking ? const Color(0xFF8B0000) : const Color(0xFFD50000));
+          ? const Color(0xFF2EFF2E) // Bright Neon Green for active listening
+          : (isSpeaking
+                ? const Color(0xFF008B0E) // Darker Green pulse for speaking
+                : const Color.fromARGB(
+                    255,
+                    0,
+                    255,
+                    17,
+                  )); // YOUR EXACT NEUTRAL GREEN
 
       // Blend with emotion tint subtly if present
       final Color tubeColor = emotionTint != null
@@ -170,8 +178,17 @@ class Mini3DPainter extends CustomPainter {
           );
 
       final Color baseGlowColor = isListening
-          ? const Color(0xFFFF1A1A)
-          : (isSpeaking ? const Color(0xFF6B0000) : const Color(0xFFFF1A1A));
+          ? const Color.fromARGB(255, 0, 255, 17) // Your green when listening
+          : (isSpeaking
+                ? const Color(
+                    0xFF004D08,
+                  ) // Deep forest green glow when speaking
+                : const Color.fromARGB(
+                    255,
+                    0,
+                    255,
+                    17,
+                  )); // YOUR EXACT NEUTRAL GREEN GLOW
 
       final Color glowColor = emotionTint != null
           ? Color.lerp(baseGlowColor, emotionTint, 0.34) ?? baseGlowColor

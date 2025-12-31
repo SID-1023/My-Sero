@@ -13,23 +13,28 @@ dependencies:
     sdk: flutter
 
   # --- CORE AI & DATA ---
-  # Google Gemini AI SDK - v0.4.7+ supports the latest GenerativeModel protocols
+  # Google Gemini AI SDK
   google_generative_ai: ^0.4.7
-  
-  # Replacing flutter_markdown with a more robust renderer for late 2025
-  # gpt_markdown handles both Markdown and LaTeX for AI responses
-  gpt_markdown: ^1.1.4
   
   # Configuration management
   flutter_dotenv: ^6.0.0
 
+  # Markdown renderer for AI responses
+  gpt_markdown: ^1.1.4
+
   # --- VOICE & PERMISSIONS ---
-  # Voice Input (STT) - v7.3.0 is optimized for iOS 18 and Android 15
+  # Voice Input (STT)
   speech_to_text: ^7.3.0
   # Voice Output (TTS)
   flutter_tts: ^4.2.3
-  # Vital for handling new private photo/mic permissions in 2025
+  # Vital for handling new private photo/mic/contacts permissions in 2025
   permission_handler: ^12.0.1
+
+  # --- SYSTEM INTERACTION (NEW) ---
+  # To search and read device contacts
+  flutter_contacts: ^1.1.9+2
+  # To open the phone dialer
+  url_launcher: ^6.3.2
 
   # --- STATE & UI ---
   provider: ^6.1.4

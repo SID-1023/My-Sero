@@ -1,12 +1,14 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // For HapticFeedback
+import 'package:flutter/services.dart';
 import 'package:google_generative_ai/google_generative_ai.dart' as ai;
 import 'package:flutter_device_apps/flutter_device_apps.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_contacts/flutter_contacts.dart'; // NEW
+import 'package:url_launcher/url_launcher.dart'; // NEW
 
 import 'models/chat_message.dart';
 import 'models/chat_session.dart';
@@ -38,10 +40,9 @@ class ChatProvider with ChangeNotifier {
   void _initTTS() {
     _flutterTts.setLanguage("en-US");
     _flutterTts.setPitch(1.0);
-    _flutterTts.setSpeechRate(0.45); // Slightly slower for a "calm" Sero voice
+    _flutterTts.setSpeechRate(0.45);
   }
 
-  /// Toggles microphone and provides haptic feedback
   Future<void> toggleListening() async {
     if (_isListening) {
       await _speechToText.stop();
@@ -58,7 +59,7 @@ class ChatProvider with ChangeNotifier {
       );
 
       if (available) {
-        HapticFeedback.heavyImpact(); // Signal start
+        HapticFeedback.heavyImpact();
         _isListening = true;
         _lastSpokenWords = "";
         notifyListeners();
@@ -81,6 +82,7 @@ class ChatProvider with ChangeNotifier {
   void _initializeModel() {
     final apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'YOUR_API_KEY';
 
+    // TOOL 1: Open App
     final openAppTool = ai.FunctionDeclaration(
       'open_app',
       'Searches for and opens an installed application on the device.',
@@ -94,14 +96,49 @@ class ChatProvider with ChangeNotifier {
       ),
     );
 
+    // TOOL 2: Search Contacts (NEW)
+    final searchContactsTool = ai.FunctionDeclaration(
+      'search_contacts',
+      'Searches the device contacts for a name to find their phone number.',
+      ai.Schema.object(
+        properties: {
+          'name': ai.Schema.string(
+            description: 'The name of the person to search for.',
+          ),
+        },
+        requiredProperties: ['name'],
+      ),
+    );
+
+    // TOOL 3: Dial Number (NEW)
+    final dialNumberTool = ai.FunctionDeclaration(
+      'dial_number',
+      'Opens the phone dialer with a specific phone number.',
+      ai.Schema.object(
+        properties: {
+          'phoneNumber': ai.Schema.string(
+            description: 'The phone number to dial.',
+          ),
+        },
+        requiredProperties: ['phoneNumber'],
+      ),
+    );
+
     _model = ai.GenerativeModel(
-      model: 'gemini-2.0-flash', // Optimized for 2025 performance
+      model: 'gemini-2.0-flash',
       apiKey: apiKey,
       tools: [
-        ai.Tool(functionDeclarations: [openAppTool]),
+        ai.Tool(
+          functionDeclarations: [
+            openAppTool,
+            searchContactsTool,
+            dialNumberTool,
+          ],
+        ),
       ],
       systemInstruction: ai.Content.system(
         "You are Sero, a helpful assistant. Use open_app to launch apps. "
+        "To call someone, first use search_contacts to find their number, then use dial_number. "
         "Keep responses short and empathetic. If successful, use a terminal-style [SUCCESS] tag.",
       ),
     );
@@ -153,47 +190,58 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Map history correctly for the model
       final history = _activeChat!.messages
           .take(_activeChat!.messages.length - 1)
-          .map((m) {
-            return m.sender == MessageSender.user
+          .map(
+            (m) => m.sender == MessageSender.user
                 ? ai.Content.text(m.text)
-                : ai.Content.model([ai.TextPart(m.text)]);
-          })
+                : ai.Content.model([ai.TextPart(m.text)]),
+          )
           .toList();
 
       final aiChat = _model.startChat(history: history);
       var response = await aiChat.sendMessage(ai.Content.text(userText));
 
-      // 1. Automatic smarter title generation for first message
-      if (_activeChat!.messages.length <= 2) {
-        _generateSmartTitle(userText);
-      }
+      if (_activeChat!.messages.length <= 2) _generateSmartTitle(userText);
 
-      // 2. Handle Tool Usage
-      final functionCalls = response.functionCalls.toList();
-      if (functionCalls.isNotEmpty) {
-        for (final call in functionCalls) {
+      // --- AGENTIC TOOL LOOP ---
+      while (response.functionCalls.isNotEmpty) {
+        final List<ai.FunctionResponse> functionResponses = [];
+
+        for (final call in response.functionCalls) {
           if (call.name == 'open_app') {
             final appName = call.args['appName'] as String;
-            final bool success = await _launchAppLogic(appName);
-
-            response = await aiChat.sendMessage(
-              ai.Content.functionResponses([
-                ai.FunctionResponse(call.name, {
-                  'status': success ? 'success' : 'failed',
-                  'message': success
-                      ? 'App $appName launched.'
-                      : 'App not found.',
-                }),
-              ]),
+            final success = await _launchAppLogic(appName);
+            functionResponses.add(
+              ai.FunctionResponse(call.name, {
+                'status': success ? 'success' : 'failed',
+                'message': success ? 'App launched.' : 'App not found.',
+              }),
+            );
+          } else if (call.name == 'search_contacts') {
+            final name = call.args['name'] as String;
+            final number = await _internalSearchContacts(name);
+            functionResponses.add(
+              ai.FunctionResponse(call.name, {'phoneNumber': number}),
+            );
+          } else if (call.name == 'dial_number') {
+            final phone = call.args['phoneNumber'] as String;
+            final success = await _internalDialNumber(phone);
+            functionResponses.add(
+              ai.FunctionResponse(call.name, {
+                'status': success ? 'dialing' : 'failed',
+              }),
             );
           }
         }
+
+        // Feed tool results back to the AI for its next decision
+        response = await aiChat.sendMessage(
+          ai.Content.functionResponses(functionResponses),
+        );
       }
 
-      // 3. Final Text Response
+      // Final Text Response from Sero
       if (response.text != null) {
         final aiMsg = ChatMessage(
           id: _id(),
@@ -205,31 +253,45 @@ class ChatProvider with ChangeNotifier {
         await _flutterTts.speak(response.text!);
       }
     } catch (e) {
-      // THE FIX: Robust error catching for "Uplink" issues
       debugPrint("Sero Error: $e");
-      final errorMsg = ChatMessage(
-        id: _id(),
-        text: "CRITICAL ERROR: Uplink interrupted. System standby.",
-        sender: MessageSender.sero,
-        timestamp: DateTime.now(),
+      _activeChat!.messages.add(
+        ChatMessage(
+          id: _id(),
+          text: "CRITICAL ERROR: Uplink interrupted.",
+          sender: MessageSender.sero,
+          timestamp: DateTime.now(),
+        ),
       );
-      _activeChat!.messages.add(errorMsg);
-      await _flutterTts.speak("Uplink interrupted. System standby.");
     } finally {
       _isTyping = false;
       notifyListeners();
     }
   }
 
-  /// Smarter title generator using simple logic (avoiding extra AI calls to save quota)
-  void _generateSmartTitle(String text) {
-    String cleanTitle = text.trim().toUpperCase();
-    if (cleanTitle.length > 20) {
-      cleanTitle = "${cleanTitle.substring(0, 17)}...";
+  // --- INTERNAL HELPER METHODS ---
+
+  Future<String> _internalSearchContacts(String name) async {
+    if (await Permission.contacts.request().isGranted) {
+      final List<Contact> contacts = await FlutterContacts.getContacts(
+        withProperties: true,
+      );
+      final match = contacts.firstWhere(
+        (c) => c.displayName.toLowerCase().contains(name.toLowerCase()),
+        orElse: () => Contact(),
+      );
+      return (match.phones.isNotEmpty)
+          ? match.phones.first.number
+          : "not found";
     }
-    _activeChat = _activeChat!.copyWith(title: cleanTitle);
-    final index = _chats.indexWhere((c) => c.id == _activeChat!.id);
-    if (index != -1) _chats[index] = _activeChat!;
+    return "permission denied";
+  }
+
+  Future<bool> _internalDialNumber(String number) async {
+    final Uri telUri = Uri(scheme: 'tel', path: number.replaceAll(' ', ''));
+    if (await canLaunchUrl(telUri)) {
+      return await launchUrl(telUri);
+    }
+    return false;
   }
 
   Future<bool> _launchAppLogic(String name) async {
@@ -238,20 +300,26 @@ class ChatProvider with ChangeNotifier {
         includeSystem: true,
         onlyLaunchable: true,
       );
-
       final match = apps.cast<AppInfo?>().firstWhere(
         (app) =>
             (app?.appName ?? "").toLowerCase().contains(name.toLowerCase()),
         orElse: () => null,
       );
-
-      if (match != null) {
+      if (match != null)
         return await FlutterDeviceApps.openApp(match.packageName!);
-      }
       return false;
     } catch (e) {
       return false;
     }
+  }
+
+  void _generateSmartTitle(String text) {
+    String cleanTitle = text.trim().toUpperCase();
+    if (cleanTitle.length > 20)
+      cleanTitle = "${cleanTitle.substring(0, 17)}...";
+    _activeChat = _activeChat!.copyWith(title: cleanTitle);
+    final index = _chats.indexWhere((c) => c.id == _activeChat!.id);
+    if (index != -1) _chats[index] = _activeChat!;
   }
 
   void clear() {

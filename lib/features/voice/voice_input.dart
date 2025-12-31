@@ -124,13 +124,13 @@ class VoiceInputProvider extends ChangeNotifier {
 
     switch (_currentEmotion) {
       case Emotion.calm:
-        return const Color(0xFF1AFF6B);
+        return const Color.fromARGB(255, 255, 0, 106);
       case Emotion.sad:
-        return const Color(0xFF4FC3F7);
+        return const Color.fromARGB(255, 0, 100, 146);
       case Emotion.stressed:
-        return const Color(0xFFFF5252);
+        return const Color.fromARGB(255, 106, 53, 0);
       case Emotion.neutral:
-        return const Color(0xFFD50000);
+        return const Color.fromARGB(255, 0, 255, 17);
     }
   }
 
