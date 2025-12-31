@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +11,7 @@ import 'keyboard_input_screen.dart';
 import '../chat/chat_list_screen.dart';
 import '../chat/chat_provider.dart';
 import '../chat/chat_screen.dart';
+import 'settings_screen.dart'; // Import your new settings screen
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +23,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+
+  // Track touch position for the Aura effect and Orb rotation
+  Offset _pointerPos = Offset.zero;
+  double _manualRotation = 0.0;
 
   @override
   void initState() {
@@ -36,71 +42,64 @@ class _HomeScreenState extends State<HomeScreen>
     final size = MediaQuery.of(context).size;
     final provider = context.watch<VoiceInputProvider>();
 
+    if (_pointerPos == Offset.zero) {
+      _pointerPos = Offset(size.width / 2, size.height / 2);
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF080101),
-      body: Stack(
-        children: [
-          // ================= BACKGROUND AMBIENT GLOW =================
-          Positioned(
-            top: -150,
-            left: size.width * 0.1,
-            right: size.width * 0.1,
-            child: Container(
-              height: 500,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: provider.emotionColor.withOpacity(0.12),
-              ),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
-                child: const SizedBox(),
-              ),
-            ),
-          ),
+      body: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _pointerPos = details.localPosition;
+            _manualRotation += details.delta.dx * 0.01;
+          });
+        },
+        child: SeroAuraEffect(
+          // Defined at the bottom of this file
+          touchPosition: _pointerPos,
+          color: provider.emotionColor,
+          child: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 32),
+                    _buildHeader(),
+                    const Spacer(),
 
-          // ================= MAIN CONTENT =================
-          SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 32),
-                _buildHeader(),
+                    // ================= MAIN ORB =================
+                    SizedBox(
+                      width: 320,
+                      height: 320,
+                      child: AnimatedBuilder(
+                        animation: _controller,
+                        builder: (_, __) {
+                          return CustomPaint(
+                            painter: GlowingOrbPainter(
+                              // Using your existing widget file
+                              progress: _controller.value,
+                              color: provider.emotionColor,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
 
-                const Spacer(),
-
-                // ================= MAIN ORB =================
-                SizedBox(
-                  width: 320,
-                  height: 320,
-                  child: AnimatedBuilder(
-                    animation: _controller,
-                    builder: (_, __) {
-                      return CustomPaint(
-                        painter: GlowingOrbPainter(
-                          progress: _controller.value,
-                          color: provider.emotionColor,
-                        ),
-                      );
-                    },
-                  ),
+                    const Spacer(),
+                    _buildKeyboardHint(context),
+                    _buildBottomNav(provider),
+                  ],
                 ),
-
-                const Spacer(),
-
-                _buildKeyboardHint(context),
-
-                _buildBottomNav(provider),
-              ],
-            ),
+              ),
+              const AssistantResponseBubble(),
+            ],
           ),
-
-          // ================= ASSISTANT RESPONSE OVERLAY =================
-          const AssistantResponseBubble(),
-        ],
+        ),
       ),
     );
   }
 
-  // ================= HEADER =================
   Widget _buildHeader() {
     return Column(
       children: const [
@@ -128,7 +127,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ================= KEYBOARD HINT =================
   Widget _buildKeyboardHint(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -157,7 +155,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ================= BOTTOM NAV =================
   Widget _buildBottomNav(VoiceInputProvider provider) {
     return Container(
       margin: const EdgeInsets.fromLTRB(30, 0, 30, 30),
@@ -171,8 +168,6 @@ class _HomeScreenState extends State<HomeScreen>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Icon(Icons.person_outline, color: Colors.white38),
-
-          // ================= CHAT / NEW CHAT ICONS =================
           Row(
             children: [
               IconButton(
@@ -198,21 +193,13 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
-
-          // ================= MIC BUTTON =================
           SeroMicButton(controller: _controller),
-
           IconButton(
-            icon: Icon(
-              Icons.tune,
-              color: provider.autoListenAfterResponse
-                  ? Colors.greenAccent
-                  : Colors.white38,
-            ),
+            icon: const Icon(Icons.tune, color: Color(0xFF1AFF6B)),
             onPressed: () {
-              provider.setAutoListenAfterResponse(
-                !provider.autoListenAfterResponse,
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
             },
           ),
         ],
@@ -225,4 +212,59 @@ class _HomeScreenState extends State<HomeScreen>
     _controller.dispose();
     super.dispose();
   }
+}
+
+// ================= FX CLASSES DEFINED LOCALLY (No extra files needed) =================
+
+class SeroAuraEffect extends StatelessWidget {
+  final Widget child;
+  final Offset touchPosition;
+  final Color color;
+
+  const SeroAuraEffect({
+    super.key,
+    required this.child,
+    required this.touchPosition,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: AuraPainter(touchPosition: touchPosition, baseColor: color),
+      child: child,
+    );
+  }
+}
+
+class AuraPainter extends CustomPainter {
+  final Offset touchPosition;
+  final Color baseColor;
+
+  AuraPainter({required this.touchPosition, required this.baseColor});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Rect rect = Offset.zero & size;
+    final Paint paint = Paint()
+      ..shader = RadialGradient(
+        center: Alignment(
+          (touchPosition.dx / size.width) * 2 - 1,
+          (touchPosition.dy / size.height) * 2 - 1,
+        ),
+        radius: 0.8,
+        colors: [
+          baseColor.withOpacity(0.12),
+          baseColor.withOpacity(0.04),
+          Colors.transparent,
+        ],
+      ).createShader(rect);
+
+    canvas.drawRect(rect, paint);
+  }
+
+  @override
+  bool shouldRepaint(AuraPainter oldDelegate) =>
+      oldDelegate.touchPosition != touchPosition ||
+      oldDelegate.baseColor != baseColor;
 }
