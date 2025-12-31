@@ -5,7 +5,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  # Supporting Dart 3.10+ for modern features like dot shorthands
+  # Updated for 2025: Supporting the latest stable Dart 3.x features
   sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
@@ -13,36 +13,40 @@ dependencies:
     sdk: flutter
 
   # --- CORE AI & DATA ---
-  # Google Gemini AI SDK for advanced multimodal reasoning
+  # Google Gemini AI SDK - v0.4.7+ supports the latest GenerativeModel protocols
   google_generative_ai: ^0.4.7
-  # Renders AI responses with Markdown (supports LaTeX in latest versions)
-  flutter_markdown: ^0.7.5
-  # FIX: Corrected to the actual latest stable version (Aug 2025)
+  
+  # Replacing flutter_markdown with a more robust renderer for late 2025
+  # gpt_markdown handles both Markdown and LaTeX for AI responses
+  gpt_markdown: ^1.1.4
+  
+  # Configuration management
   flutter_dotenv: ^6.0.0
 
   # --- VOICE & PERMISSIONS ---
-  # Voice Input (Speech to Text) - Optimized for Android 15 & iOS 18
+  # Voice Input (STT) - v7.3.0 is optimized for iOS 18 and Android 15
   speech_to_text: ^7.3.0
-  # Voice Output (Text to Speech)
+  # Voice Output (TTS)
   flutter_tts: ^4.2.3
-  # Critical for Mic and Package Visibility permissions
+  # Vital for handling new private photo/mic permissions in 2025
   permission_handler: ^12.0.1
 
   # --- STATE & UI ---
-  provider: ^6.1.2
+  provider: ^6.1.4
   animate_do: ^4.2.0
   cupertino_icons: ^1.0.8
   intl: ^0.19.0
-  # Modern federated plugin for launching and listing apps
+  
+  # Modern federated plugin for app management
   flutter_device_apps: ^0.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  # Using the latest strict lints for Dart 3.10
+  # Enforcing the latest strict lints
   flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
   assets:
-    - .env # Ensure this file exists in your project root
+    - .env

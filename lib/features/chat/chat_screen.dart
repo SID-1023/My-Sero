@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../chat/chat_provider.dart';
+// 1. Same directory imports - remove the ../../ pathing
+import 'chat_provider.dart';
+
+// 2. Voice input is in lib/features/voice/ (one level up, then into voice)
 import '../voice/voice_input.dart';
+
+// 3. Widgets are in lib/widgets/ (two levels up from features/chat/ then into widgets)
 import '../../../widgets/chat_bubble.dart';
 import '../../../widgets/chat_composer.dart';
 import '../../../widgets/typing_indicator.dart';
@@ -26,13 +31,14 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!_scrollController.hasClients) return;
     _scrollController.animateTo(
       0.0,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOutQuart, // Fixed the undefined getter error
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutQuart, // Matches your high-end UI feel
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // watch allows the UI to rebuild when providers change
     final chatProvider = context.watch<ChatProvider>();
     final voiceProvider = context.watch<VoiceInputProvider>();
 
@@ -51,20 +57,26 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: _buildAppBar(context, chatProvider, voiceProvider),
       body: Stack(
         children: [
-          // Dynamic Ambient Background Glow
+          // Dynamic Ambient Background Glow - Expanded for better visual depth
           Positioned(
-            top: -50,
-            right: -50,
+            top: -100,
+            right: -100,
             child: AnimatedContainer(
-              duration: const Duration(seconds: 2),
-              width: 350,
-              height: 350,
+              duration: const Duration(seconds: 3),
+              width: 500,
+              height: 500,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: voiceProvider.emotionColor.withOpacity(0.08),
+                gradient: RadialGradient(
+                  colors: [
+                    voiceProvider.emotionColor.withOpacity(0.12),
+                    voiceProvider.emotionColor.withOpacity(0.02),
+                    Colors.transparent,
+                  ],
+                ),
               ),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+                filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
                 child: Container(color: Colors.transparent),
               ),
             ),
@@ -77,7 +89,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? _buildEmptyState()
                     : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 110, 16, 20),
+                        padding: const EdgeInsets.fromLTRB(16, 120, 16, 20),
                         reverse: true, // Key for chat: builds from bottom up
                         physics: const BouncingScrollPhysics(),
                         itemCount: messages.length + (isTyping ? 1 : 0),
@@ -86,14 +98,19 @@ class _ChatScreenState extends State<ChatScreen> {
                             return const Align(
                               alignment: Alignment.centerLeft,
                               child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 12.0),
+                                padding: EdgeInsets.symmetric(
+                                  vertical: 16.0,
+                                  horizontal: 8.0,
+                                ),
                                 child: TypingIndicator(),
                               ),
                             );
                           }
+
                           final messageIndex = isTyping ? index - 1 : index;
                           final message =
                               messages[messages.length - 1 - messageIndex];
+
                           return ChatBubble(message: message);
                         },
                       ),
@@ -102,7 +119,7 @@ class _ChatScreenState extends State<ChatScreen> {
               // Glassmorphic Input Section
               ClipRRect(
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
                     padding: EdgeInsets.only(
                       bottom: MediaQuery.of(context).padding.bottom + 12,
@@ -111,7 +128,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       top: 16,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F0F13).withOpacity(0.85),
+                      color: const Color(0xFF0F0F13).withOpacity(0.8),
                       border: const Border(
                         top: BorderSide(color: Colors.white10, width: 0.5),
                       ),
@@ -133,18 +150,18 @@ class _ChatScreenState extends State<ChatScreen> {
     VoiceInputProvider voice,
   ) {
     return PreferredSize(
-      preferredSize: const Size.fromHeight(80),
+      preferredSize: const Size.fromHeight(85),
       child: ClipRRect(
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
           child: AppBar(
-            backgroundColor: const Color(0xFF050507).withOpacity(0.75),
+            backgroundColor: const Color(0xFF050507).withOpacity(0.7),
             elevation: 0,
             centerTitle: true,
             leading: IconButton(
               icon: const Icon(
                 Icons.chevron_left_rounded,
-                size: 30,
+                size: 32,
                 color: Colors.white70,
               ),
               onPressed: () => Navigator.pop(context),
@@ -155,59 +172,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 Text(
                   chat.activeChat?.title.toUpperCase() ?? 'SERO TERMINAL',
                   style: const TextStyle(
-                    fontSize: 12,
-                    letterSpacing: 2.5,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                    letterSpacing: 3.0,
+                    fontWeight: FontWeight.w800,
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 6),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 500),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: voice.emotionColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: voice.emotionColor.withOpacity(0.2),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: voice.emotionColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: voice.emotionColor,
-                              blurRadius: 6,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        voice.isListening
-                            ? "ENCRYPTED UPLINK"
-                            : "SYSTEM STABLE",
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: voice.emotionColor,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(height: 8),
+                _buildSystemStatusBadge(voice),
               ],
             ),
             actions: [
@@ -222,6 +194,48 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildSystemStatusBadge(VoiceInputProvider voice) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      decoration: BoxDecoration(
+        color: voice.emotionColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: voice.emotionColor.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: voice.emotionColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: voice.emotionColor,
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            voice.isListening ? "ENCRYPTED UPLINK" : "SYSTEM STABLE",
+            style: TextStyle(
+              fontSize: 8,
+              color: voice.emotionColor,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -229,16 +243,16 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Icon(
             Icons.shield_moon_outlined,
-            size: 48,
-            color: Colors.white.withOpacity(0.05),
+            size: 56,
+            color: Colors.white.withOpacity(0.03),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Text(
             "NO LOGS DETECTED",
             style: TextStyle(
-              color: Colors.white.withOpacity(0.15),
-              fontSize: 12,
-              letterSpacing: 2,
+              color: Colors.white.withOpacity(0.1),
+              fontSize: 10,
+              letterSpacing: 4,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -248,24 +262,24 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showClearDialog(BuildContext context, ChatProvider provider) {
-    HapticFeedback.vibrate();
+    HapticFeedback.heavyImpact();
     showDialog(
       context: context,
       builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: AlertDialog(
           backgroundColor: const Color(0xFF14141B),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(28),
             side: const BorderSide(color: Colors.white10),
           ),
           title: const Text(
             "Purge Session?",
-            style: TextStyle(color: Colors.white, fontSize: 18),
+            style: TextStyle(color: Colors.white),
           ),
           content: const Text(
             "This will permanently erase all terminal logs from the current session.",
-            style: TextStyle(color: Colors.white60, fontSize: 14),
+            style: TextStyle(color: Colors.white60),
           ),
           actions: [
             TextButton(
@@ -279,7 +293,7 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () {
                 provider.clear();
                 Navigator.pop(context);
-                HapticFeedback.lightImpact();
+                HapticFeedback.mediumImpact();
               },
               child: const Text(
                 "PURGE",

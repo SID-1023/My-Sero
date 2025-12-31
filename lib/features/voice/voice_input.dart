@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
-// FIX: Updated to correct package import
 import 'package:flutter_device_apps/flutter_device_apps.dart';
+import 'package:flutter/services.dart'; // Added for Haptics
 
 import 'voice_output.dart';
 import '../chat/models/chat_message.dart';
@@ -17,10 +17,43 @@ enum Emotion { neutral, calm, sad, stressed }
 class VoiceInputProvider extends ChangeNotifier {
   final SpeechToText _speech = SpeechToText();
   final VoiceOutput _voiceOutput = VoiceOutput();
-  final ChatProvider _chatProvider;
+  ChatProvider _chatProvider; // Changed to non-final for updateChatProvider
 
   VoiceInputProvider({required ChatProvider chatProvider})
     : _chatProvider = chatProvider;
+
+  /// Syncs ChatProvider if updated via ProxyProvider in main.dart
+  void updateChatProvider(ChatProvider newProvider) {
+    _chatProvider = newProvider;
+  }
+
+  /* ================= SETTINGS & PROFILE STATE ================= */
+
+  String _userName = "User";
+  String _userHandle = "user_sero";
+  Color _customAccentColor = const Color(0xFFD50000);
+  bool _useSystemEmotionColor = true;
+
+  String get userName => _userName;
+  String get userHandle => _userHandle;
+  Color get customAccentColor => _customAccentColor;
+
+  void updateProfile({String? name, String? handle}) {
+    if (name != null) _userName = name;
+    if (handle != null) _userHandle = handle;
+    notifyListeners();
+  }
+
+  void setAccentColor(Color color) {
+    _customAccentColor = color;
+    _useSystemEmotionColor = false;
+    notifyListeners();
+  }
+
+  void resetToEmotionColor() {
+    _useSystemEmotionColor = true;
+    notifyListeners();
+  }
 
   /* ================= CORE STATES ================= */
 
@@ -80,12 +113,15 @@ class VoiceInputProvider extends ChangeNotifier {
   String _lastResponse = "";
   String? _errorMessage;
 
-  /* ================= EMOTION ================= */
+  /* ================= EMOTION & COLOR LOGIC ================= */
 
   Emotion _currentEmotion = Emotion.neutral;
   Emotion get currentEmotion => _currentEmotion;
 
   Color get emotionColor {
+    // Override with custom user color if preference is set
+    if (!_useSystemEmotionColor) return _customAccentColor;
+
     switch (_currentEmotion) {
       case Emotion.calm:
         return const Color(0xFF1AFF6B);
@@ -270,6 +306,7 @@ class VoiceInputProvider extends ChangeNotifier {
       if (!ok) return;
     }
 
+    HapticFeedback.lightImpact(); // Provide physical feedback when starting
     _lastWords = "";
     _isListening = true;
     notifyListeners();
@@ -282,8 +319,6 @@ class VoiceInputProvider extends ChangeNotifier {
           notifyListeners();
 
           // If this is a final recognition result, process it immediately.
-          // This avoids waiting for a manual stop and enables quick interactions
-          // similar to ChatGPT/Gemini voice behavior.
           if (result.finalResult) {
             _processRecognizedText(result.recognizedWords, speak: true);
 
@@ -425,7 +460,7 @@ class VoiceInputProvider extends ChangeNotifier {
 
     final lower = input.toLowerCase();
     if (lower.contains('hello') || lower.contains('hi')) {
-      return 'I am here. What do you require from the void?';
+      return 'I am here, $_userName. What do you require from the void?';
     }
     if (lower.contains('who are you')) {
       return 'I am Sero, an emotion-aware presence bound to this device.';
@@ -550,7 +585,7 @@ class VoiceInputProvider extends ChangeNotifier {
   String _handleLocalIntent(String intent) {
     switch (intent) {
       case 'greeting':
-        return "Greetings. I am online and ready.";
+        return "Greetings, $_userName. I am online and ready.";
       case 'time':
         final now = DateTime.now();
         return "The current time is ${now.hour}:${now.minute.toString().padLeft(2, '0')}.";
@@ -565,8 +600,6 @@ class VoiceInputProvider extends ChangeNotifier {
         _listInstalledAppsAndShow();
         return "Listing installed apps now.";
       case 'navigation_home':
-        // We don't have a BuildContext here; a future task could publish an
-        // event that the UI listens to for navigation. For now, respond.
         return "Returning to the home interface.";
       case 'app_exit':
         return "Okay, exiting is not supported yet. I'll remember the intent.";
@@ -609,9 +642,7 @@ class VoiceInputProvider extends ChangeNotifier {
 
   /* ================= APP OPENING (ANDROID) ================= */
 
-  // Small alias table to recognize common short names
   static const Map<String, List<String>> _appAliases = {
-    // --- Social & Communication ---
     'instagram': ['insta', 'ig', 'reels', 'instagram'],
     'facebook': ['fb', 'facebook', 'meta'],
     'messenger': ['fb-messenger', 'messenger', 'chat'],
@@ -633,19 +664,23 @@ class VoiceInputProvider extends ChangeNotifier {
     'viber': ['viber'],
     'line': ['line messenger'],
     'wechat': ['wechat', 'weixin'],
-
-    // --- Google / System Apps ---
     'notes': [
-      'notes', 'keep', 'memo', 'notepad',
-      'com.google.android.keep', // Google Keep
-      'com.samsung.android.app.notes', // Samsung Notes
-      'com.miui.notes', // Xiaomi Notes
+      'notes',
+      'keep',
+      'memo',
+      'notepad',
+      'com.google.android.keep',
+      'com.samsung.android.app.notes',
+      'com.miui.notes',
     ],
     'album': [
-      'album', 'gallery', 'photos', 'images',
-      'com.android.gallery3d', // Standard Android
-      'com.sec.android.gallery3d', // Samsung
-      'com.miui.gallery', // Xiaomi/Redmi
+      'album',
+      'gallery',
+      'photos',
+      'images',
+      'com.android.gallery3d',
+      'com.sec.android.gallery3d',
+      'com.miui.gallery',
     ],
     'chrome': ['chrome', 'google chrome', 'browser'],
     'gmail': ['gmail', 'google mail', 'email'],
@@ -666,8 +701,6 @@ class VoiceInputProvider extends ChangeNotifier {
     'phone': ['phone', 'dialer', 'calls'],
     'messages': ['messages', 'message', 'sms', 'text'],
     'youtube': ['youtube', 'yt', 'videos'],
-
-    // --- Shopping & E-Commerce ---
     'amazon': ['amazon', 'amazon shopping', 'amazon prime'],
     'flipkart': ['flipkart', 'fk'],
     'myntra': ['myntra'],
@@ -682,8 +715,6 @@ class VoiceInputProvider extends ChangeNotifier {
     'walmart': ['walmart'],
     'target': ['target'],
     'shopee': ['shopee'],
-
-    // --- OTT, Video & Music ---
     'netflix': ['netflix', 'movies'],
     'prime video': ['prime video', 'amazon prime video', 'pv'],
     'hotstar': ['hotstar', 'disney hotstar', 'disney+'],
@@ -702,8 +733,6 @@ class VoiceInputProvider extends ChangeNotifier {
     'voot': ['voot'],
     'gaana': ['gaana'],
     'wynk': ['wynk'],
-
-    // --- AI & Productivity ---
     'chatgpt': ['chatgpt', 'openai', 'gpt', 'ai chat'],
     'gemini': ['gemini', 'google ai', 'bard'],
     'copilot': ['copilot', 'microsoft ai', 'bing'],
@@ -715,8 +744,6 @@ class VoiceInputProvider extends ChangeNotifier {
     'wps office': ['wps', 'office', 'word', 'excel'],
     'dropbox': ['dropbox'],
     'onedrive': ['onedrive', 'microsoft cloud'],
-
-    // --- Food, Travel & Delivery ---
     'zomato': ['zomato', 'food delivery'],
     'swiggy': ['swiggy', 'instamart'],
     'ubereats': ['uber eats', 'food'],
@@ -727,8 +754,6 @@ class VoiceInputProvider extends ChangeNotifier {
     'booking': ['booking.com', 'hotels'],
     'irctc': ['irctc', 'train'],
     'makemytrip': ['mmt', 'makemytrip'],
-
-    // --- Finance & Payments ---
     'phonepe': ['phonepe', 'pp'],
     'paytm': ['paytm'],
     'paypal': ['paypal'],
@@ -737,8 +762,6 @@ class VoiceInputProvider extends ChangeNotifier {
     'binance': ['binance', 'crypto'],
     'coinbase': ['coinbase'],
     'truecaller': ['truecaller', 'caller id'],
-
-    // --- Health & Lifestyle ---
     'strava': ['strava', 'running', 'cycling'],
     'fitbit': ['fitbit'],
     'myfitnesspal': ['calories', 'diet', 'fitness'],
@@ -747,7 +770,6 @@ class VoiceInputProvider extends ChangeNotifier {
     'headspace': ['headspace'],
   };
 
-  // Simple Levenshtein distance implementation for fuzzy matching
   int _levenshteinDistance(String s, String t) {
     final n = s.length;
     final m = t.length;
@@ -768,59 +790,41 @@ class VoiceInputProvider extends ChangeNotifier {
         ].reduce((a, b) => a < b ? a : b);
       }
     }
-
     return dp[n][m];
   }
 
-  // FIX: Updated to prioritize Aliases and System Packages
   int _scoreAppMatch(AppInfo app, String name) {
     final n = (app.appName ?? "").toLowerCase();
     final p = (app.packageName ?? "").toLowerCase();
     final lowerName = name.toLowerCase();
 
-    // 1. Alias Match (Highest Priority)
     for (final entry in _appAliases.entries) {
       if (entry.value.contains(lowerName)) {
-        // If the alias matches the app name or package name specifically
-        if (p.contains(entry.key) || n.contains(entry.key)) {
-          return 2000;
-        }
+        if (p.contains(entry.key) || n.contains(entry.key)) return 2000;
       }
     }
 
-    // 2. Exact Match
     if (n == lowerName) return 1500;
-
     var score = 0;
-
-    // 3. Containment checks
     if (n.contains(lowerName)) score += 500;
     if (p.contains(lowerName)) score += 400;
-
-    // 4. Token prefix checks
     final tokens = n.split(RegExp(r'\s+'));
     if (tokens.any((t) => t.startsWith(lowerName))) score += 250;
-
-    // 5. Levenshtein penalty
     final ld = _levenshteinDistance(n, lowerName);
     score -= ld * 30;
     final ld2 = _levenshteinDistance(p, lowerName);
     score -= ld2 * 10;
-
     return score;
   }
 
-  /// Attempts to open an installed Android app by fuzzy matching the app name.
   Future<bool> _openAppByName(String name) async {
     try {
-      // FIX: Changed includeSystem to true so Album/Notes can be found
       final apps = await FlutterDeviceApps.listApps(
         includeSystem: true,
         onlyLaunchable: true,
       );
 
       final lowerName = name.toLowerCase();
-
       if (apps.isEmpty) {
         final msg = "I couldn't find any apps on this device.";
         _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
@@ -828,7 +832,6 @@ class VoiceInputProvider extends ChangeNotifier {
         return false;
       }
 
-      // Score every candidate and pick the best match
       final scored = <MapEntry<AppInfo, int>>[];
       for (final a in apps) {
         final s = _scoreAppMatch(a, lowerName);
@@ -836,15 +839,12 @@ class VoiceInputProvider extends ChangeNotifier {
       }
 
       scored.sort((a, b) => b.value.compareTo(a.value));
-
       final top = scored.first;
 
-      // Threshold check
       if (top.value >= 150) {
         return await FlutterDeviceApps.openApp(top.key.packageName ?? "");
       }
 
-      // Otherwise offer helpful suggestions
       final suggestions = scored
           .where((e) => e.value > 0)
           .take(5)
@@ -857,7 +857,6 @@ class VoiceInputProvider extends ChangeNotifier {
 
       _chatProvider.addMessage(text: msg, sender: MessageSender.sero);
       await _voiceOutput.speak(msg);
-
       _lastOpenHandled = true;
       return false;
     } catch (e) {
@@ -867,10 +866,8 @@ class VoiceInputProvider extends ChangeNotifier {
     }
   }
 
-  /// List installed user apps, post to chat, and speak a brief summary.
   Future<void> _listInstalledAppsAndShow({int maxToSpeak = 8}) async {
     try {
-      // FIX: Changed includeSystem to true
       final apps = await FlutterDeviceApps.listApps(
         includeSystem: true,
         onlyLaunchable: true,
@@ -884,18 +881,18 @@ class VoiceInputProvider extends ChangeNotifier {
       }
 
       apps.sort((a, b) => (a.appName ?? "").compareTo(b.appName ?? ""));
-      final count = apps.length;
-
       final names = apps.map((a) => a.appName ?? "").toList();
-
       final showCount = names.length > 50 ? 50 : names.length;
       final shortList = names.take(showCount).join(', ');
-      final chatMsg =
-          'Found $count apps: $shortList${names.length > showCount ? ', ...' : ''}';
-      _chatProvider.addMessage(text: chatMsg, sender: MessageSender.sero);
 
-      final speakList = names.take(maxToSpeak).join(', ');
-      final speakMsg = 'I found $count apps. Examples include: $speakList.';
+      _chatProvider.addMessage(
+        text:
+            'Found ${apps.length} apps: $shortList${names.length > showCount ? ', ...' : ''}',
+        sender: MessageSender.sero,
+      );
+
+      final speakMsg =
+          'I found ${apps.length} apps. Examples include: ${names.take(maxToSpeak).join(', ')}.';
       await _voiceOutput.speak(speakMsg);
     } catch (e) {
       _errorMessage = 'List apps failed: $e';

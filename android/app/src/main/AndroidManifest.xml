@@ -6,6 +6,10 @@
     
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <application
         android:name="${applicationName}"
         android:label="Sero"
@@ -38,6 +42,14 @@
 
     <queries>
         <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+
+        <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <data android:scheme="https" />
@@ -48,25 +60,15 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
 
-        <package android:name="com.android.vending" /> <package android:name="com.google.android.apps.photos" />
-        <package android:name="com.sec.android.gallery3d" />
-        <package android:name="com.miui.gallery" />
-        <package android:name="com.android.gallery3d" />
-        <package android:name="com.coloros.gallery" />
-
-        <package android:name="com.google.android.keep" />
-        <package android:name="com.samsung.android.app.notes" />
-        <package android:name="com.miui.notes" />
-        <package android:name="com.evernote" />
-
-        <package android:name="com.android.camera" />
-        <package android:name="com.google.android.GoogleCamera" />
-        <package android:name="com.sec.android.app.camera" />
-
-        <package android:name="com.instagram.android" />
-        <package android:name="com.facebook.katana" />
+        <package android:name="com.android.vending" /> 
+        <package android:name="com.google.android.apps.photos" />
         <package android:name="com.whatsapp" />
         <package android:name="org.telegram.messenger" />
+        <package android:name="com.spotify.music" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.google.android.calendar" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.facebook.katana" />
         <package android:name="com.twitter.android" />
         <package android:name="com.snapchat.android" />
     </queries>

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Required for HapticFeedback
 import 'package:provider/provider.dart';
 
 import '../voice/voice_input.dart';
@@ -11,7 +12,7 @@ import 'keyboard_input_screen.dart';
 import '../chat/chat_list_screen.dart';
 import '../chat/chat_provider.dart';
 import '../chat/chat_screen.dart';
-import 'settings_screen.dart'; // Import your new settings screen
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -52,11 +53,11 @@ class _HomeScreenState extends State<HomeScreen>
         onPanUpdate: (details) {
           setState(() {
             _pointerPos = details.localPosition;
+            // Adds rotation physics to the orb based on horizontal drag
             _manualRotation += details.delta.dx * 0.01;
           });
         },
         child: SeroAuraEffect(
-          // Defined at the bottom of this file
           touchPosition: _pointerPos,
           color: provider.emotionColor,
           child: Stack(
@@ -75,11 +76,23 @@ class _HomeScreenState extends State<HomeScreen>
                       child: AnimatedBuilder(
                         animation: _controller,
                         builder: (_, __) {
-                          return CustomPaint(
-                            painter: GlowingOrbPainter(
-                              // Using your existing widget file
-                              progress: _controller.value,
-                              color: provider.emotionColor,
+                          // Wraps the orb in a transform to allow the tilt/rotate physics
+                          return Transform(
+                            alignment: Alignment.center,
+                            transform: Matrix4.identity()
+                              ..setEntry(3, 2, 0.001) // Perspective
+                              ..rotateX(
+                                (_pointerPos.dy - size.height / 2) * -0.0005,
+                              )
+                              ..rotateY(
+                                (_pointerPos.dx - size.width / 2) * 0.0005,
+                              )
+                              ..rotateZ(_manualRotation),
+                            child: CustomPaint(
+                              painter: GlowingOrbPainter(
+                                progress: _controller.value,
+                                color: provider.emotionColor,
+                              ),
                             ),
                           );
                         },
@@ -133,6 +146,7 @@ class _HomeScreenState extends State<HomeScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
+          HapticFeedback.lightImpact(); // Tactile feedback
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const KeyboardInputScreen()),
           );
@@ -176,6 +190,7 @@ class _HomeScreenState extends State<HomeScreen>
                   color: Colors.white38,
                 ),
                 onPressed: () {
+                  HapticFeedback.selectionClick();
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const ChatListScreen()),
                   );
@@ -184,6 +199,7 @@ class _HomeScreenState extends State<HomeScreen>
               IconButton(
                 icon: const Icon(Icons.add, color: Colors.white38),
                 onPressed: () {
+                  HapticFeedback.mediumImpact();
                   final chatProvider = context.read<ChatProvider>();
                   chatProvider.createNewChat();
                   Navigator.of(
@@ -197,6 +213,7 @@ class _HomeScreenState extends State<HomeScreen>
           IconButton(
             icon: const Icon(Icons.tune, color: Color(0xFF1AFF6B)),
             onPressed: () {
+              HapticFeedback.heavyImpact(); // Stronger feedback for settings
               Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
@@ -214,7 +231,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// ================= FX CLASSES DEFINED LOCALLY (No extra files needed) =================
+// ================= FX CLASSES DEFINED LOCALLY =================
 
 class SeroAuraEffect extends StatelessWidget {
   final Widget child;
