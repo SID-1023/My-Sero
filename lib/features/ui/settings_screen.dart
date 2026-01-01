@@ -18,7 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _userHandle = "sero_user";
   String _userEmail = "";
   String _aiPersonality = "Standard Assistant";
-  Color _selectedAccent = const Color(0xFF00FF11); // Sero Green
+  Color _selectedAccent = const Color(0xFF00FF11); // Default Sero Green
 
   @override
   void initState() {
@@ -26,7 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadUserData();
   }
 
-  // 1. FETCH ACTUAL USER FROM BACK4APP
+  // 1. FETCH ACTUAL USER DATA & PERSISTED COLOR
   Future<void> _loadUserData() async {
     ParseUser? currentUser = await _authService.getCurrentUser();
     if (currentUser != null) {
@@ -34,14 +34,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _userName = currentUser.get<String>('username') ?? "Unknown User";
         _userHandle = currentUser.username ?? "user";
         _userEmail = currentUser.emailAddress ?? "No email linked";
-        // Load personality from cloud, fallback to default if null
         _aiPersonality =
             currentUser.get<String>('personality') ?? "Helpful Assistant";
+
+        // Retrieve the saved color hex string
+        String? savedColor = currentUser.get<String>('accentColor');
+        if (savedColor != null) {
+          _selectedAccent = Color(int.parse(savedColor));
+        }
       });
     }
   }
 
-  // 2. LOGOUT LOGIC
+  // 2. SAVE ACCENT COLOR TO BACK4APP
+  Future<void> _updateAccentColor(Color newColor) async {
+    HapticFeedback.selectionClick();
+    ParseUser? user = await _authService.getCurrentUser();
+    if (user != null) {
+      // Store the color as a string value of its integer (Hex)
+      user.set('accentColor', newColor.value.toString());
+      final response = await user.save();
+
+      if (response.success) {
+        setState(() => _selectedAccent = newColor);
+      }
+    }
+  }
+
+  // 3. LOGOUT LOGIC
   void _handleLogout() async {
     HapticFeedback.heavyImpact();
 
@@ -81,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // 3. PERSONALIZATION LOGIC
+  // 4. PERSONALIZATION LOGIC
   void _showPersonalizationSheet() {
     final TextEditingController pController = TextEditingController(
       text: _aiPersonality,
@@ -115,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 10),
             const Text(
-              "Define how Sero should behave (e.g., 'Sarcastic', 'Gen-Z', 'Strict Professional')",
+              "Define how Sero should behave.",
               style: TextStyle(color: Colors.white38, fontSize: 12),
             ),
             const SizedBox(height: 20),
@@ -126,7 +146,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.05),
                 hintText: "Enter behavior profile...",
-                hintStyle: const TextStyle(color: Colors.white10),
                 enabledBorder: OutlineInputBorder(
                   borderSide: const BorderSide(color: Colors.white10),
                   borderRadius: BorderRadius.circular(12),
@@ -229,7 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 32),
 
-          // SYSTEM CONFIGURATION SECTION
+          // SYSTEM CONFIGURATION
           _buildSectionHeader("System Configuration"),
           _buildSettingItem(
             Icons.psychology_outlined,
@@ -292,8 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               .map(
                 (c) => GestureDetector(
                   onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _selectedAccent = c);
+                    _updateAccentColor(c); // Saves to Back4app
                     Navigator.pop(context);
                   },
                   child: CircleAvatar(
