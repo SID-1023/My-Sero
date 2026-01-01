@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
 import '../voice/voice_input.dart';
+import '../auth/auth_service.dart'; // Import your AuthService
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,16 +13,97 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Local state for demonstration - in a real app, these would come from a UserProvider
-  String _userName = "Sidhu Umate";
-  String _userHandle = "sidumate11";
-  Color _selectedAccent = const Color(0xFFFF2D55);
+  final AuthService _authService = AuthService();
+
+  // Dynamic User Data
+  String _userName = "Loading...";
+  String _userHandle = "sero_user";
+  String _userEmail = "";
+  Color _selectedAccent = const Color(0xFF00FF11); // Matched your Sero Green
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  // 1. FETCH ACTUAL USER FROM BACK4APP
+  Future<void> _loadUserData() async {
+    ParseUser? currentUser = await ParseUser.currentUser() as ParseUser?;
+    if (currentUser != null) {
+      setState(() {
+        // Use 'username' or a custom 'fullName' field if you created one
+        _userName = currentUser.get<String>('username') ?? "Unknown User";
+        _userHandle = currentUser.username ?? "user";
+        _userEmail = currentUser.emailAddress ?? "No email linked";
+      });
+    }
+  }
+
+  // 2. LOGOUT LOGIC
+  void _handleLogout() async {
+    HapticFeedback.heavyImpact();
+
+    // Show confirmation dialog
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          "Terminate Session?",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "This will disconnect your neural link to Sero.",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("CANCEL"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              "LOGOUT",
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _authService.logout();
+      if (mounted) {
+        // Go back to login and clear navigation stack
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      }
+    }
+  }
+
+  // 3. UPDATE PROFILE LOGIC
+  Future<void> _updateProfile(String newName) async {
+    ParseUser? currentUser = await ParseUser.currentUser() as ParseUser?;
+    if (currentUser != null) {
+      currentUser.set(
+        'username',
+        newName,
+      ); // Or use a custom field like 'fullName'
+      final response = await currentUser.save();
+
+      if (response.success) {
+        setState(() => _userName = newName);
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Profile Synced Successfully")),
+          );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // ignore: unused_local_variable
-    final provider = context.watch<VoiceInputProvider>();
-
     return Scaffold(
       backgroundColor: const Color(0xFF080101),
       appBar: AppBar(
@@ -31,25 +114,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          "Settings",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          "Neural Settings",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+          ),
         ),
         centerTitle: true,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          // ================= USER PROFILE SECTION =================
           const SizedBox(height: 20),
+          // PROFILE SECTION
           Center(
             child: Hero(
               tag: 'profile_avatar',
               child: CircleAvatar(
-                radius: 40,
-                backgroundColor: _selectedAccent.withOpacity(0.2),
-                child: Text(
-                  _userName.substring(0, 2).toUpperCase(),
-                  style: TextStyle(fontSize: 24, color: _selectedAccent),
+                radius: 45,
+                backgroundColor: _selectedAccent.withOpacity(0.1),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _selectedAccent.withOpacity(0.5),
+                      width: 2,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _userName.isNotEmpty
+                        ? _userName.substring(0, 1).toUpperCase()
+                        : "S",
+                    style: TextStyle(
+                      fontSize: 32,
+                      color: _selectedAccent,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -76,14 +179,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: OutlinedButton(
               onPressed: () => _showEditProfileSheet(context),
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.white24),
+                side: const BorderSide(color: Colors.white10),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
               child: const Text(
-                "Edit profile",
-                style: TextStyle(color: Colors.white),
+                "Edit Identity",
+                style: TextStyle(color: Colors.white70),
               ),
             ),
           ),
@@ -104,19 +207,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
           _buildSectionHeader("Account"),
           _buildSettingItem(
-            Icons.work_outline,
-            "Workspace",
-            trailingText: "Personal",
+            Icons.email_outlined,
+            "Email",
+            trailingText: _userEmail,
           ),
           _buildSettingItem(
             Icons.star_outline,
             "Upgrade to Plus",
             color: Colors.amber,
-          ),
-          _buildSettingItem(
-            Icons.email_outlined,
-            "Email",
-            trailingText: "sidumate11@gmail.com",
           ),
 
           const SizedBox(height: 24),
@@ -131,25 +229,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               decoration: BoxDecoration(
                 color: _selectedAccent,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: _selectedAccent.withOpacity(0.5),
-                    blurRadius: 8,
-                  ),
-                ],
               ),
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
+          // LOGOUT BUTTON
           _buildSettingItem(
-            Icons.logout,
-            "Log out",
+            Icons.power_settings_new,
+            "Terminate Session",
             color: Colors.redAccent,
-            onTap: () {
-              HapticFeedback.heavyImpact();
-              // Add logout logic here
-            },
+            onTap: _handleLogout,
           ),
           const SizedBox(height: 40),
         ],
@@ -160,20 +250,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ================= HELPERS & DIALOGS =================
 
   void _showEditProfileSheet(BuildContext context) {
-    HapticFeedback.mediumImpact();
+    final TextEditingController nameController = TextEditingController(
+      text: _userName,
+    );
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF1A1A1A),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 24,
+          right: 24,
+          top: 24,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              "Edit Profile",
+              "Update Identity",
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -182,37 +280,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 20),
             TextField(
+              controller: nameController,
               style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: "Full Name",
-                labelStyle: const TextStyle(color: Colors.white38),
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white10),
+              decoration: const InputDecoration(
+                labelText: "Username / Full Name",
+                labelStyle: TextStyle(color: Colors.white38),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF00FF11)),
                 ),
               ),
-              onChanged: (val) => setState(() => _userName = val),
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: _selectedAccent),
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Save Changes"),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _selectedAccent,
+                ),
+                onPressed: () {
+                  _updateProfile(nameController.text.trim());
+                  Navigator.pop(context);
+                },
+                child: const Text(
+                  "Save to Cloud",
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ),
+            const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
 
+  // Color picker and build helper methods remain similar but updated with Haptics...
   void _showColorPicker(BuildContext context) {
     final colors = [
-      const Color(0xFFFF2D55),
+      const Color(0xFF00FF11),
       Colors.blue,
-      Colors.green,
       Colors.purple,
       Colors.orange,
+      Colors.redAccent,
     ];
-
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
@@ -229,7 +343,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     setState(() => _selectedAccent = c);
                     Navigator.pop(context);
                   },
-                  child: CircleAvatar(backgroundColor: c, radius: 20),
+                  child: CircleAvatar(
+                    backgroundColor: c,
+                    radius: 22,
+                    child: _selectedAccent == c
+                        ? const Icon(Icons.check, color: Colors.black)
+                        : null,
+                  ),
                 ),
               )
               .toList(),
@@ -262,10 +382,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 2),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: ListTile(
         leading: Icon(icon, color: color ?? Colors.white70),
@@ -287,11 +407,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: const TextStyle(color: Colors.white38),
                   )
                 : const Icon(Icons.chevron_right, color: Colors.white24)),
-        onTap:
-            onTap ??
-            () {
-              HapticFeedback.lightImpact();
-            },
+        onTap: onTap ?? () => HapticFeedback.lightImpact(),
       ),
     );
   }

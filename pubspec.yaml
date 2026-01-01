@@ -44,6 +44,7 @@ dependencies:
   
   # Modern federated plugin for app management
   flutter_device_apps: ^0.3.1
+  parse_server_sdk_flutter: ^10.7.0
 
 dev_dependencies:
   flutter_test:
