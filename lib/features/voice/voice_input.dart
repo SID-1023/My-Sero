@@ -118,22 +118,17 @@ class VoiceInputProvider extends ChangeNotifier {
   Emotion _currentEmotion = Emotion.neutral;
   Emotion get currentEmotion => _currentEmotion;
 
+  /// Returns the UI accent color.
+  /// Mood detection still runs in the background, but the color remains constant.
   Color get emotionColor {
-    // Override with custom user color if preference is set
+    // We ignore the _currentEmotion switch entirely to keep the UI professional.
+    // If a custom color is set in settings, use that; otherwise, default to Sero Green.
     if (!_useSystemEmotionColor) return _customAccentColor;
 
-    switch (_currentEmotion) {
-      case Emotion.calm:
-        return const Color.fromARGB(255, 255, 0, 106);
-      case Emotion.sad:
-        return const Color.fromARGB(255, 0, 100, 146);
-      case Emotion.stressed:
-        return const Color.fromARGB(255, 106, 53, 0);
-      case Emotion.neutral:
-        return const Color.fromARGB(255, 0, 255, 17);
-    }
+    // This is your "Top Notch" Sero Green.
+    // It will now stay this color even if you are angry, sad, or stressed.
+    return const Color(0xFF00FF11);
   }
-
   /* ================= GETTERS ================= */
 
   bool get isListening => _isListening;
