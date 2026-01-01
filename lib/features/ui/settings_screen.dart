@@ -13,12 +13,11 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final AuthService _authService = AuthService();
 
-  // Dynamic User Data
   String _userName = "Loading...";
   String _userHandle = "sero_user";
   String _userEmail = "";
   String _aiPersonality = "Standard Assistant";
-  Color _selectedAccent = const Color(0xFF00FF11); // Default Sero Green
+  Color _selectedAccent = const Color(0xFF00FF11);
 
   @override
   void initState() {
@@ -26,7 +25,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadUserData();
   }
 
-  // 1. FETCH ACTUAL USER DATA & PERSISTED COLOR
   Future<void> _loadUserData() async {
     ParseUser? currentUser = await _authService.getCurrentUser();
     if (currentUser != null) {
@@ -36,8 +34,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _userEmail = currentUser.emailAddress ?? "No email linked";
         _aiPersonality =
             currentUser.get<String>('personality') ?? "Helpful Assistant";
-
-        // Retrieve the saved color hex string
         String? savedColor = currentUser.get<String>('accentColor');
         if (savedColor != null) {
           _selectedAccent = Color(int.parse(savedColor));
@@ -46,25 +42,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // 2. SAVE ACCENT COLOR TO BACK4APP
   Future<void> _updateAccentColor(Color newColor) async {
     HapticFeedback.selectionClick();
     ParseUser? user = await _authService.getCurrentUser();
     if (user != null) {
-      // Store the color as a string value of its integer (Hex)
       user.set('accentColor', newColor.value.toString());
       final response = await user.save();
-
       if (response.success) {
         setState(() => _selectedAccent = newColor);
       }
     }
   }
 
-  // 3. LOGOUT LOGIC
   void _handleLogout() async {
     HapticFeedback.heavyImpact();
-
     bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -95,18 +86,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirm == true) {
       await _authService.logout();
-      if (mounted) {
+      if (mounted)
         Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-      }
     }
   }
 
-  // 4. PERSONALIZATION LOGIC
   void _showPersonalizationSheet() {
     final TextEditingController pController = TextEditingController(
       text: _aiPersonality,
     );
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -134,22 +122,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
-              "Define how Sero should behave.",
-              style: TextStyle(color: Colors.white38, fontSize: 12),
-            ),
-            const SizedBox(height: 20),
             TextField(
               controller: pController,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.05),
-                hintText: "Enter behavior profile...",
-                enabledBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(color: Colors.white10),
-                  borderRadius: BorderRadius.circular(12),
-                ),
                 focusedBorder: OutlineInputBorder(
                   borderSide: BorderSide(color: _selectedAccent),
                   borderRadius: BorderRadius.circular(12),
@@ -165,7 +143,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   backgroundColor: _selectedAccent,
                 ),
                 onPressed: () async {
-                  HapticFeedback.mediumImpact();
                   ParseUser? user = await _authService.getCurrentUser();
                   if (user != null) {
                     user.set('personality', pController.text.trim());
@@ -197,10 +174,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
         title: const Text(
           "Neural Settings",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -211,7 +184,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
           const SizedBox(height: 20),
-          // PROFILE SECTION
           Center(
             child: CircleAvatar(
               radius: 45,
@@ -245,10 +217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: const TextStyle(color: Colors.white38),
             ),
           ),
-
           const SizedBox(height: 32),
-
-          // SYSTEM CONFIGURATION
           _buildSectionHeader("System Configuration"),
           _buildSettingItem(
             Icons.psychology_outlined,
@@ -256,10 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: "Current Logic: $_aiPersonality",
             onTap: _showPersonalizationSheet,
           ),
-
           const SizedBox(height: 24),
-
-          // INTERFACE SECTION
           _buildSectionHeader("Interface"),
           _buildSettingItem(
             Icons.color_lens_outlined,
@@ -267,16 +233,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showColorPicker(context),
             trailing: CircleAvatar(radius: 8, backgroundColor: _selectedAccent),
           ),
-
           _buildSettingItem(
             Icons.email_outlined,
             "Linked Email",
             trailingText: _userEmail,
           ),
-
           const SizedBox(height: 32),
-
-          // TERMINATION SECTION
           _buildSettingItem(
             Icons.power_settings_new,
             "Terminate Session",
@@ -289,8 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ================= HELPERS =================
-
+  // UPDATED: COLOR PICKER WITH HORIZONTAL SCROLLING
   void _showColorPicker(BuildContext context) {
     final colors = [
       const Color(0xFF00FF11),
@@ -298,32 +259,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Colors.purple,
       Colors.orange,
       Colors.redAccent,
+      const Color(0xFFFF006A),
+      const Color(0xFF05FFA1),
+      const Color(0xFF01CDFE),
+      const Color(0xFFB967FF),
+      const Color(0xFFFF8132),
+      const Color(0xFF6300FF),
+      const Color(0xFF00F2FF),
+      const Color(0xFFADFF00),
     ];
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        height: 150,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: colors
-              .map(
-                (c) => GestureDetector(
-                  onTap: () {
-                    _updateAccentColor(c); // Saves to Back4app
-                    Navigator.pop(context);
-                  },
-                  child: CircleAvatar(
-                    backgroundColor: c,
-                    radius: 22,
-                    child: _selectedAccent == c
-                        ? const Icon(Icons.check, color: Colors.black)
-                        : null,
-                  ),
-                ),
-              )
-              .toList(),
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        height: 140, // Increased height to prevent clipping
+        child: Column(
+          children: [
+            const Text(
+              "Neural Frequency",
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 15),
+            Expanded(
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: colors.length,
+                itemBuilder: (context, index) {
+                  final c = colors[index];
+                  return GestureDetector(
+                    onTap: () {
+                      _updateAccentColor(c);
+                      Navigator.pop(context);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: CircleAvatar(
+                        backgroundColor: c,
+                        radius: 24,
+                        child: _selectedAccent == c
+                            ? const Icon(Icons.check, color: Colors.black)
+                            : null,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

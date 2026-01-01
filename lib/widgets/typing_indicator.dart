@@ -1,10 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../features/voice/voice_input.dart'; // To access the emotion color
 
 class TypingIndicator extends StatefulWidget {
-  final Color? color;
+  final Color? color; // Now essentially required from parent to maintain theme
   const TypingIndicator({super.key, this.color});
 
   @override
@@ -18,7 +16,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
   @override
   void initState() {
     super.initState();
-    // 1.5 seconds provides a more "sophisticated" and calm processing feel
+    // 1.5s duration creates a sophisticated, calm "processing" feel
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -33,22 +31,22 @@ class _TypingIndicatorState extends State<TypingIndicator>
 
   @override
   Widget build(BuildContext context) {
-    // Connect to your global emotion color
-    final voiceProvider = context.watch<VoiceInputProvider>();
-    final activeColor = widget.color ?? voiceProvider.emotionColor;
+    // UPDATED LOGIC: We no longer watch VoiceInputProvider.
+    // We strictly use the color passed down, or a default fallback.
+    final activeColor = widget.color ?? const Color(0xFF00FF11);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        // Glassmorphic background matches ChatBubble
+        // Glassmorphic "Ghost" Background synced with theme
         color: activeColor.withOpacity(0.08),
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-          bottomLeft: Radius.circular(4), // Sharp corner for AI
+          topLeft: Radius.circular(22),
+          topRight: Radius.circular(22),
+          bottomRight: Radius.circular(22),
+          bottomLeft: Radius.circular(6), // Sharp AI tail
         ),
-        border: Border.all(color: activeColor.withOpacity(0.2), width: 0.8),
+        border: Border.all(color: activeColor.withOpacity(0.15), width: 0.8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -56,37 +54,36 @@ class _TypingIndicatorState extends State<TypingIndicator>
           return AnimatedBuilder(
             animation: _controller,
             builder: (context, child) {
-              // Calculate sine wave offset for each dot (staggered effect)
-              // This creates a continuous fluid wave instead of individual pulses
+              // Continuous Fluid Wave Logic
               final double offset = index * 0.4;
               final double value = math.sin(
                 (_controller.value * 2 * math.pi) - offset,
               );
 
-              // Map sine (-1 to 1) to a normalized range (0 to 1)
+              // Map sine (-1 to 1) to normalized (0 to 1)
               final double normalized = (value + 1) / 2;
 
-              // Scale dots between 0.7x and 1.3x
-              final double scale = 0.7 + (0.6 * normalized);
+              // Scale dots between 0.8x and 1.2x
+              final double scale = 0.8 + (0.4 * normalized);
 
-              // Opacity pulses between 0.2 and 1.0
-              final double opacity = 0.2 + (0.8 * normalized);
+              // Opacity pulses between 0.3 and 1.0
+              final double opacity = 0.3 + (0.7 * normalized);
 
               return Container(
                 margin: const EdgeInsets.symmetric(horizontal: 3),
                 height: 6,
                 width: 6,
                 transform: Matrix4.identity()
-                  ..translate(0.0, -2.0 * normalized) // Subtle vertical float
+                  ..translate(0.0, -3.0 * normalized) // Staggered float
                   ..scale(scale),
                 decoration: BoxDecoration(
                   color: activeColor.withOpacity(opacity),
                   shape: BoxShape.circle,
                   boxShadow: [
-                    if (opacity > 0.6) // Only glow when the dot is "bright"
+                    if (opacity > 0.7) // Glow pulses with brightness
                       BoxShadow(
-                        color: activeColor.withOpacity(0.2 * opacity),
-                        blurRadius: 6,
+                        color: activeColor.withOpacity(0.3 * opacity),
+                        blurRadius: 10,
                         spreadRadius: 1,
                       ),
                   ],

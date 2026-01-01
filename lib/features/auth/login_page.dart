@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'auth_service.dart';
 
@@ -8,16 +9,48 @@ class SeroLoginPage extends StatefulWidget {
   State<SeroLoginPage> createState() => _SeroLoginPageState();
 }
 
-class _SeroLoginPageState extends State<SeroLoginPage> {
+class _SeroLoginPageState extends State<SeroLoginPage>
+    with SingleTickerProviderStateMixin {
   final _userController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
   bool _isLoading = false;
 
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+      ),
+    );
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+          ),
+        );
+
+    _animationController.forward();
+  }
+
   @override
   void dispose() {
     _userController.dispose();
     _passwordController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -31,14 +64,11 @@ class _SeroLoginPageState extends State<SeroLoginPage> {
     }
 
     setState(() => _isLoading = true);
-
     final response = await _authService.login(username, password);
 
     if (mounted) {
       setState(() => _isLoading = false);
-
       if (response.success) {
-        // MATCHED: main.dart uses '/' for the home route
         Navigator.pushReplacementNamed(context, '/');
       } else {
         _showError("Signal Interrupted: ${response.error?.message}");
@@ -49,10 +79,10 @@ class _SeroLoginPageState extends State<SeroLoginPage> {
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFFFF2D55), // Aurora Red
+        content: Text(message, style: const TextStyle(fontFamily: 'Courier')),
+        backgroundColor: const Color(0xFFFF2D55).withOpacity(0.9),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -60,102 +90,137 @@ class _SeroLoginPageState extends State<SeroLoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0F), // Deep space background
-      body: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(), // Close keyboard on tap
-        child: Stack(
-          children: [
-            // Sci-Fi Background Glows
-            Positioned(
-              top: -100,
-              left: -100,
-              child: _buildGlow(const Color(0xFF00FF11).withOpacity(0.08)),
-            ),
-            Positioned(
-              bottom: -50,
-              right: -50,
-              child: _buildGlow(const Color(0xFF00A3FF).withOpacity(0.05)),
-            ),
+      backgroundColor: const Color(0xFF050507),
+      body: Stack(
+        children: [
+          // 1. Dynamic Background Glows
+          Positioned(
+            top: -150,
+            left: -100,
+            child: _buildGlow(const Color(0xFF00FF11).withOpacity(0.12), 400),
+          ),
+          Positioned(
+            bottom: -100,
+            right: -100,
+            child: _buildGlow(const Color(0xFF00A3FF).withOpacity(0.08), 500),
+          ),
 
-            Center(
+          // 2. Main Content
+          GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(30),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Brand Header
-                    const Text(
-                      "SERO",
-                      style: TextStyle(
-                        color: Color(0xFF00FF11),
-                        fontSize: 42,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 10,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "NEURAL INTERFACE V1.0",
-                      style: TextStyle(
-                        color: const Color(0xFF00FF11).withOpacity(0.5),
-                        fontSize: 10,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(height: 60),
+                padding: const EdgeInsets.symmetric(horizontal: 30),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Column(
+                      children: [
+                        // Sci-Fi Logo Section
+                        const Text(
+                          "SERO",
+                          style: TextStyle(
+                            color: Color(0xFF00FF11),
+                            fontSize: 52,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 15,
+                            shadows: [
+                              Shadow(color: Color(0xFF00FF11), blurRadius: 20),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "NEURAL UPLINK ESTABLISHED",
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 10,
+                            letterSpacing: 3,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 60),
 
-                    // Inputs
-                    _buildInput(
-                      "Username",
-                      _userController,
-                      Icons.person_outline,
-                      TextInputType.name,
+                        // Glassmorphic Input Panel
+                        _buildGlassPanel([
+                          _buildInput(
+                            "Username",
+                            _userController,
+                            Icons.person_outline_rounded,
+                          ),
+                          const Divider(color: Colors.white10, height: 1),
+                          _buildInput(
+                            "Password",
+                            _passwordController,
+                            Icons.lock_open_rounded,
+                            isPass: true,
+                          ),
+                        ]),
+
+                        const SizedBox(height: 40),
+
+                        // Action Button
+                        _buildActionButton("INITIALIZE SESSION", _handleLogin),
+
+                        const SizedBox(height: 24),
+
+                        // Footer
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/register'),
+                          child: Text(
+                            "NEW ENROLLMENT",
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.3),
+                              letterSpacing: 2,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 20),
-                    _buildInput(
-                      "Password",
-                      _passwordController,
-                      Icons.lock_outline,
-                      TextInputType.visiblePassword,
-                      isPass: true,
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // Login Button
-                    _buildActionButton("INITIALIZE SESSION", _handleLogin),
-
-                    const SizedBox(height: 20),
-
-                    // Register Link
-                    TextButton(
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/register'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.white54,
-                      ),
-                      child: const Text(
-                        "Create New Identity",
-                        style: TextStyle(letterSpacing: 1),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildGlow(Color color) {
+  Widget _buildGlow(Color color, double size) {
     return Container(
-      width: 400,
-      height: 400,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: color, blurRadius: 100, spreadRadius: 50)],
+        boxShadow: [BoxShadow(color: color, blurRadius: 120, spreadRadius: 20)],
+      ),
+    );
+  }
+
+  Widget _buildGlassPanel(List<Widget> children) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.05),
+            Colors.white.withOpacity(0.01),
+          ],
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Column(children: children),
+        ),
       ),
     );
   }
@@ -163,78 +228,72 @@ class _SeroLoginPageState extends State<SeroLoginPage> {
   Widget _buildInput(
     String hint,
     TextEditingController controller,
-    IconData icon,
-    TextInputType type, {
+    IconData icon, {
     bool isPass = false,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF00FF11).withOpacity(0.15)),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: isPass,
-        keyboardType: type,
-        style: const TextStyle(color: Colors.white, fontSize: 16),
-        cursorColor: const Color(0xFF00FF11),
-        decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: const Color(0xFF00FF11), size: 22),
-          hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white24),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 18,
-            horizontal: 20,
-          ),
+    return TextField(
+      controller: controller,
+      obscureText: isPass,
+      style: const TextStyle(color: Colors.white, fontSize: 16),
+      cursorColor: const Color(0xFF00FF11),
+      decoration: InputDecoration(
+        prefixIcon: Icon(
+          icon,
+          color: const Color(0xFF00FF11).withOpacity(0.7),
+          size: 20,
+        ),
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white24, fontSize: 14),
+        border: InputBorder.none,
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 20,
+          horizontal: 20,
         ),
       ),
     );
   }
 
   Widget _buildActionButton(String label, VoidCallback onTap) {
-    return Container(
-      height: 60,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF064D00), Color(0xFF00FF11)],
+    return GestureDetector(
+      onTap: _isLoading ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        height: 60,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(
+                0xFF00FF11,
+              ).withOpacity(_isLoading ? 0.1 : 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          gradient: const LinearGradient(
+            colors: [Color(0xFF064D00), Color(0xFF00FF11)],
+          ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF00FF11).withOpacity(0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: _isLoading ? null : onTap,
-          child: Center(
-            child: _isLoading
-                ? const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : Text(
-                    label,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2,
-                      fontSize: 16,
-                    ),
+        child: Center(
+          child: _isLoading
+              ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
                   ),
-          ),
+                )
+              : Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                    fontSize: 15,
+                  ),
+                ),
         ),
       ),
     );

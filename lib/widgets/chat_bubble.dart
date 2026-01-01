@@ -1,32 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../features/chat/models/chat_message.dart';
-import '../features/voice/voice_input.dart'; // To access the emotion color
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
+  final Color accentColor;
 
-  const ChatBubble({super.key, required this.message});
+  const ChatBubble({
+    super.key,
+    required this.message,
+    required this.accentColor,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Note: Adjust 'message.isUser' or 'message.sender' based on your model field name
     final bool isUser = message.isUser;
-    final voiceProvider = context.watch<VoiceInputProvider>();
 
-    // Logic: User is dark obsidian, Sero is tinted with current emotion
+    // Logic: Both bubbles now sync with the accentColor for a unified theme
     final Color bubbleColor = isUser
-        ? const Color(0xFF14141B) // Deep space grey
-        : voiceProvider.emotionColor.withOpacity(0.08);
+        ? accentColor.withOpacity(0.12) // Glowing tint for User
+        : const Color(0xFF14141B); // Deep space (Obsidian) for AI
 
     final Color borderColor = isUser
-        ? Colors.white.withOpacity(0.05)
-        : voiceProvider.emotionColor.withOpacity(0.2);
+        ? accentColor.withOpacity(0.4) // Strong neon border for User
+        : accentColor.withOpacity(0.12); // Subtle accent-colored border for AI
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.78,
@@ -34,21 +35,23 @@ class ChatBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: bubbleColor,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(20),
-            topRight: const Radius.circular(20),
-            bottomLeft: Radius.circular(isUser ? 20 : 4), // Sharp "tail" for AI
-            bottomRight: Radius.circular(
-              isUser ? 4 : 20,
-            ), // Sharp "tail" for User
+            topLeft: const Radius.circular(22),
+            topRight: const Radius.circular(22),
+            bottomLeft: Radius.circular(isUser ? 22 : 4),
+            bottomRight: Radius.circular(isUser ? 4 : 22),
           ),
-          border: Border.all(color: borderColor, width: 0.8),
+          border: Border.all(color: borderColor, width: 1.0),
           boxShadow: [
-            if (!isUser) // AI messages have a subtle "presence" glow
+            // User messages have a vibrant Neon Glow
+            if (isUser)
               BoxShadow(
-                color: voiceProvider.emotionColor.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: accentColor.withOpacity(0.15),
+                blurRadius: 15,
+                spreadRadius: -2,
               ),
+            // AI messages now have a subtle matching color glow instead of mood-based
+            if (!isUser)
+              BoxShadow(color: accentColor.withOpacity(0.04), blurRadius: 12),
           ],
         ),
         child: Column(
@@ -58,9 +61,10 @@ class ChatBubble extends StatelessWidget {
           children: [
             Text(
               message.text,
-              style: TextStyle(
-                color: isUser ? Colors.white.withOpacity(0.9) : Colors.white,
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 15,
+                fontWeight: FontWeight.w400,
                 height: 1.4,
                 letterSpacing: 0.2,
               ),
@@ -70,9 +74,11 @@ class ChatBubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  message.timeLabel, // e.g., "12:45 PM"
+                  message.timeLabel,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.2),
+                    color: isUser
+                        ? accentColor.withOpacity(0.6)
+                        : Colors.white.withOpacity(0.2),
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
@@ -81,9 +87,9 @@ class ChatBubble extends StatelessWidget {
                 if (isUser) ...[
                   const SizedBox(width: 4),
                   Icon(
-                    Icons.check_circle_outline,
-                    size: 10,
-                    color: Colors.white.withOpacity(0.2),
+                    Icons.done_all_rounded,
+                    size: 11,
+                    color: accentColor.withOpacity(0.7),
                   ),
                 ],
               ],
