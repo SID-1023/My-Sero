@@ -20,9 +20,21 @@ import 'package:sero/features/voice/voice_input.dart';
 import 'package:sero/features/chat/chat_provider.dart';
 
 Future<void> main() async {
+  // 1. MUST BE FIRST: Required for async calls before runApp
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Initialize Back4app
+  // 2. LOAD ENV FIRST: Critical to prevent 'NotInitializedError'
+  // We wrap this in a try-catch to ensure the app doesn't crash on boot
+  try {
+    await dotenv.load(fileName: ".env");
+    debugPrint("Sero: Neural Memory established (.env loaded).");
+  } catch (e) {
+    debugPrint(
+      "CRITICAL ERROR: Could not load .env file. Verify its location in root. $e",
+    );
+  }
+
+  // 3. Initialize Back4app (The Neural Link)
   const keyApplicationId = 'BH1Jev9ExtOqH50y4IpPARsSjICRxPWy6JBmQwuR';
   const keyClientKey = '2KbzQTIj0lEsZCx1vTxY6oYmZxokt3o1r0oBAPds';
   const keyParseServerUrl = 'https://parseapi.back4app.com';
@@ -35,20 +47,26 @@ Future<void> main() async {
     debug: true,
   );
 
-  // 2. Robust Session Check
+  // 4. Session Check & Data Warm-up
   bool loggedInStatus = false;
+
+  // We initialize the provider instance here so we can pre-load data
+  final ChatProvider initialChatProvider = ChatProvider();
+
   try {
     final ParseUser? currentUser = await ParseUser.currentUser() as ParseUser?;
     if (currentUser != null && currentUser.sessionToken != null) {
-      // FIX: Added '?' to handle the nullable return type
       final ParseResponse? response = await ParseUser.getCurrentUserFromServer(
         currentUser.sessionToken!,
       );
 
-      // Check if response is not null and successful
       loggedInStatus = response?.success ?? false;
 
-      if (!loggedInStatus) {
+      if (loggedInStatus) {
+        // PRE-FETCH: Sync chat history from Back4app cloud before UI builds
+        await initialChatProvider.loadChatHistory();
+        debugPrint("Sero: Cloud history synchronized.");
+      } else {
         await currentUser.logout();
       }
     }
@@ -57,22 +75,19 @@ Future<void> main() async {
     loggedInStatus = false;
   }
 
-  // 3. Load Env for AI features
-  try {
-    await dotenv.load(fileName: ".env");
-  } catch (e) {
-    debugPrint("Warning: Could not load .env file.");
-  }
-
+  // 5. Run the Multi-Provider Engine
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ChatProvider()..init()),
+        // Initialize Gemini AI and Chat Logic
+        ChangeNotifierProvider.value(value: initialChatProvider..init()),
+        // Bridge Chat and Voice providers via Proxy
         ChangeNotifierProxyProvider<ChatProvider, VoiceInputProvider>(
           create: (context) => VoiceInputProvider(
             chatProvider: Provider.of<ChatProvider>(context, listen: false),
-          )..initSpeech(),
+          )..initSpeech(), // Wake up the microphone
           update: (context, chat, voice) {
+            // Ensure VoiceInputProvider always has the latest ChatProvider state
             return voice!..updateChatProvider(chat);
           },
         ),
@@ -100,6 +115,7 @@ class AssistantApp extends StatelessWidget {
             splashColor: Colors.transparent,
             highlightColor: Colors.transparent,
             colorScheme: ColorScheme.dark(
+              // The primary theme color now reacts to Sero's emotion
               primary: voiceProvider.emotionColor,
               secondary: const Color(0xFF1AFF6B),
               surface: const Color(0xFF121212),
@@ -112,6 +128,7 @@ class AssistantApp extends StatelessWidget {
               ),
             ),
           ),
+          // Route logic: Send user to Home if session exists, else Login
           initialRoute: isLoggedIn ? '/' : '/login',
           routes: {
             '/': (_) => const HomeScreen(),

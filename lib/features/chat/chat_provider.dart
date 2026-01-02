@@ -7,25 +7,24 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_contacts/flutter_contacts.dart'; // NEW
-import 'package:url_launcher/url_launcher.dart'; // NEW
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
 
 import 'models/chat_message.dart';
 import 'models/chat_session.dart';
 
 class ChatProvider with ChangeNotifier {
-  final List<ChatSession> _chats = [];
+  List<ChatSession> _chats = [];
   ChatSession? _activeChat;
   bool _isTyping = false;
   late final ai.GenerativeModel _model;
 
-  // VOICE ENGINES
   final SpeechToText _speechToText = SpeechToText();
   final FlutterTts _flutterTts = FlutterTts();
   bool _isListening = false;
   String _lastSpokenWords = "";
 
-  // GETTERS
   ChatSession? get activeChat => _activeChat;
   List<ChatSession> get chats => _chats;
   bool get isTyping => _isTyping;
@@ -35,6 +34,11 @@ class ChatProvider with ChangeNotifier {
   ChatProvider() {
     _initializeModel();
     _initTTS();
+    loadChatHistory();
+  }
+
+  void init() {
+    if (_chats.isEmpty) loadChatHistory();
   }
 
   void _initTTS() {
@@ -43,46 +47,131 @@ class ChatProvider with ChangeNotifier {
     _flutterTts.setSpeechRate(0.45);
   }
 
-  Future<void> toggleListening() async {
-    if (_isListening) {
-      await _speechToText.stop();
-      _isListening = false;
-      HapticFeedback.mediumImpact();
-      notifyListeners();
-      return;
-    }
+  // --- PERSISTENCE LOGIC (BACK4APP) ---
 
-    var micStatus = await Permission.microphone.request();
-    if (micStatus.isGranted) {
-      bool available = await _speechToText.initialize(
-        onError: (e) => debugPrint('STT Error: $e'),
-      );
+  Future<void> loadChatHistory() async {
+    final currentUser = await ParseUser.currentUser() as ParseUser?;
+    if (currentUser == null) return;
 
-      if (available) {
-        HapticFeedback.heavyImpact();
-        _isListening = true;
-        _lastSpokenWords = "";
-        notifyListeners();
+    final QueryBuilder<ParseObject> sessionQuery =
+        QueryBuilder<ParseObject>(ParseObject('ChatSession'))
+          ..whereEqualTo('user', currentUser.toPointer())
+          ..orderByDescending('createdAt');
 
-        _speechToText.listen(
-          onResult: (val) {
-            _lastSpokenWords = val.recognizedWords;
-            if (val.finalResult) {
-              _isListening = false;
-              HapticFeedback.lightImpact();
-              addMessage(text: _lastSpokenWords, sender: MessageSender.user);
-              notifyListeners();
-            }
-          },
+    final response = await sessionQuery.query();
+
+    if (response.success && response.results != null) {
+      _chats = response.results!.map((obj) {
+        return ChatSession(
+          id: obj.objectId!,
+          title: obj.get<String>('title') ?? 'Untitled',
+          createdAt: obj.createdAt!,
+          messages: [],
         );
+      }).toList();
+
+      if (_chats.isNotEmpty && _activeChat == null) {
+        _activeChat = _chats.first;
+        await fetchMessagesForActiveChat();
       }
+      notifyListeners();
     }
   }
+
+  Future<void> fetchMessagesForActiveChat() async {
+    if (_activeChat == null) return;
+
+    final QueryBuilder<ParseObject> msgQuery =
+        QueryBuilder<ParseObject>(ParseObject('Message'))
+          ..whereEqualTo('sessionId', _activeChat!.id)
+          ..orderByAscending('createdAt');
+
+    final response = await msgQuery.query();
+
+    if (response.success && response.results != null) {
+      _activeChat!.messages.clear();
+      for (var obj in response.results!) {
+        _activeChat!.messages.add(
+          ChatMessage(
+            id: obj.objectId!,
+            text: obj.get<String>('text') ?? '',
+            sender: obj.get<String>('sender') == 'user'
+                ? MessageSender.user
+                : MessageSender.sero,
+            timestamp: obj.createdAt!,
+          ),
+        );
+      }
+      notifyListeners();
+    }
+  }
+
+  // --- NAVIGATION & ARCHIVE ---
+
+  Future<void> openChat(ChatSession chat) async {
+    _activeChat = chat;
+    notifyListeners();
+    await fetchMessagesForActiveChat();
+  }
+
+  // --- PURGE & DELETE LOGIC ---
+
+  /// Purges all messages from the currently active session (Back4app + Local)
+  Future<void> clear() async {
+    if (_activeChat == null) return;
+    try {
+      final QueryBuilder<ParseObject> query = QueryBuilder<ParseObject>(
+        ParseObject('Message'),
+      )..whereEqualTo('sessionId', _activeChat!.id);
+
+      final response = await query.query();
+      if (response.success && response.results != null) {
+        for (var obj in response.results!) {
+          await obj.delete();
+        }
+      }
+      _activeChat!.messages.clear();
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Purge Error: $e");
+    }
+  }
+
+  /// Deletes a whole chat session and all its messages
+  Future<void> deleteChat(ChatSession session) async {
+    try {
+      // 1. Delete messages linked to session
+      final QueryBuilder<ParseObject> query = QueryBuilder<ParseObject>(
+        ParseObject('Message'),
+      )..whereEqualTo('sessionId', session.id);
+      final msgResponse = await query.query();
+      if (msgResponse.results != null) {
+        for (var m in msgResponse.results!) {
+          await m.delete();
+        }
+      }
+
+      // 2. Delete the session itself
+      final sessionObj = ParseObject('ChatSession')..objectId = session.id;
+      await sessionObj.delete();
+
+      // 3. Update UI
+      _chats.removeWhere((c) => c.id == session.id);
+      if (_activeChat?.id == session.id) {
+        _activeChat = _chats.isNotEmpty ? _chats.first : null;
+        if (_activeChat != null) await fetchMessagesForActiveChat();
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Delete Session Error: $e");
+    }
+  }
+
+  // --- MODEL & TOOLS ---
 
   void _initializeModel() {
     final apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'YOUR_API_KEY';
 
-    // TOOL 1: Open App
     final openAppTool = ai.FunctionDeclaration(
       'open_app',
       'Searches for and opens an installed application on the device.',
@@ -96,7 +185,6 @@ class ChatProvider with ChangeNotifier {
       ),
     );
 
-    // TOOL 2: Search Contacts (NEW)
     final searchContactsTool = ai.FunctionDeclaration(
       'search_contacts',
       'Searches the device contacts for a name to find their phone number.',
@@ -110,7 +198,6 @@ class ChatProvider with ChangeNotifier {
       ),
     );
 
-    // TOOL 3: Dial Number (NEW)
     final dialNumberTool = ai.FunctionDeclaration(
       'dial_number',
       'Opens the phone dialer with a specific phone number.',
@@ -144,35 +231,44 @@ class ChatProvider with ChangeNotifier {
     );
   }
 
-  void init() {
-    if (_chats.isEmpty) createNewChat();
-  }
+  Future<void> createNewChat() async {
+    final currentUser = await ParseUser.currentUser() as ParseUser?;
+    if (currentUser == null) return;
 
-  void createNewChat() {
-    final chat = ChatSession(
-      id: _id(),
-      title: 'NEW TERMINAL',
-      createdAt: DateTime.now(),
-      messages: [],
-    );
-    _chats.insert(0, chat);
-    _activeChat = chat;
-    notifyListeners();
-  }
+    final sessionObj = ParseObject('ChatSession')
+      ..set('title', 'NEW TERMINAL')
+      ..set('user', currentUser.toPointer());
 
-  void openChat(ChatSession chat) {
-    _activeChat = chat;
-    notifyListeners();
+    final response = await sessionObj.save();
+
+    if (response.success) {
+      final chat = ChatSession(
+        id: sessionObj.objectId!,
+        title: 'NEW TERMINAL',
+        createdAt: DateTime.now(),
+        messages: [],
+      );
+      _chats.insert(0, chat);
+      _activeChat = chat;
+      notifyListeners();
+    }
   }
 
   Future<void> addMessage({
     required String text,
     required MessageSender sender,
   }) async {
-    if (_activeChat == null) return;
+    if (_activeChat == null) await createNewChat();
+
+    final msgObj = ParseObject('Message')
+      ..set('text', text)
+      ..set('sender', sender == MessageSender.user ? 'user' : 'sero')
+      ..set('sessionId', _activeChat!.id);
+
+    await msgObj.save();
 
     final msg = ChatMessage(
-      id: _id(),
+      id: msgObj.objectId ?? _id(),
       text: text,
       sender: sender,
       timestamp: DateTime.now(),
@@ -204,10 +300,8 @@ class ChatProvider with ChangeNotifier {
 
       if (_activeChat!.messages.length <= 2) _generateSmartTitle(userText);
 
-      // --- AGENTIC TOOL LOOP ---
       while (response.functionCalls.isNotEmpty) {
         final List<ai.FunctionResponse> functionResponses = [];
-
         for (final call in response.functionCalls) {
           if (call.name == 'open_app') {
             final appName = call.args['appName'] as String;
@@ -215,12 +309,11 @@ class ChatProvider with ChangeNotifier {
             functionResponses.add(
               ai.FunctionResponse(call.name, {
                 'status': success ? 'success' : 'failed',
-                'message': success ? 'App launched.' : 'App not found.',
               }),
             );
           } else if (call.name == 'search_contacts') {
-            final name = call.args['name'] as String;
-            final number = await _internalSearchContacts(name);
+            final contactName = call.args['name'] as String;
+            final number = await _internalSearchContacts(contactName);
             functionResponses.add(
               ai.FunctionResponse(call.name, {'phoneNumber': number}),
             );
@@ -234,33 +327,19 @@ class ChatProvider with ChangeNotifier {
             );
           }
         }
-
-        // Feed tool results back to the AI for its next decision
         response = await aiChat.sendMessage(
           ai.Content.functionResponses(functionResponses),
         );
       }
 
-      // Final Text Response from Sero
       if (response.text != null) {
-        final aiMsg = ChatMessage(
-          id: _id(),
-          text: response.text!,
-          sender: MessageSender.sero,
-          timestamp: DateTime.now(),
-        );
-        _activeChat!.messages.add(aiMsg);
+        await addMessage(text: response.text!, sender: MessageSender.sero);
         await _flutterTts.speak(response.text!);
       }
     } catch (e) {
-      debugPrint("Sero Error: $e");
-      _activeChat!.messages.add(
-        ChatMessage(
-          id: _id(),
-          text: "CRITICAL ERROR: Uplink interrupted.",
-          sender: MessageSender.sero,
-          timestamp: DateTime.now(),
-        ),
+      await addMessage(
+        text: "CRITICAL ERROR: Uplink interrupted.",
+        sender: MessageSender.sero,
       );
     } finally {
       _isTyping = false;
@@ -268,20 +347,25 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  // --- INTERNAL HELPER METHODS ---
+  // --- INTERNAL TOOL HELPERS ---
 
   Future<String> _internalSearchContacts(String name) async {
     if (await Permission.contacts.request().isGranted) {
       final List<Contact> contacts = await FlutterContacts.getContacts(
         withProperties: true,
       );
-      final match = contacts.firstWhere(
-        (c) => c.displayName.toLowerCase().contains(name.toLowerCase()),
-        orElse: () => Contact(),
-      );
-      return (match.phones.isNotEmpty)
-          ? match.phones.first.number
-          : "not found";
+      try {
+        final match = contacts.firstWhere(
+          (c) => (c.displayName).toLowerCase().contains(name.toLowerCase()),
+        );
+        if (match.phones.isNotEmpty) {
+          final String? phoneNumber = match.phones.first.number;
+          if (phoneNumber != null) return phoneNumber;
+        }
+        return "not found";
+      } catch (e) {
+        return "not found";
+      }
     }
     return "permission denied";
   }
@@ -305,30 +389,107 @@ class ChatProvider with ChangeNotifier {
             (app?.appName ?? "").toLowerCase().contains(name.toLowerCase()),
         orElse: () => null,
       );
-      if (match != null)
-        return await FlutterDeviceApps.openApp(match.packageName!);
+      if (match != null) {
+        final String? pkg = match.packageName;
+        if (pkg != null) {
+          return await FlutterDeviceApps.openApp(pkg);
+        }
+      }
       return false;
     } catch (e) {
       return false;
     }
   }
 
-  void _generateSmartTitle(String text) {
+  // --- VOICE LOGIC ---
+
+  Future<void> toggleListening() async {
+    if (_isListening) {
+      await _speechToText.stop();
+      _isListening = false;
+      notifyListeners();
+      return;
+    }
+    if (await Permission.microphone.request().isGranted) {
+      if (await _speechToText.initialize()) {
+        _isListening = true;
+        _speechToText.listen(
+          onResult: (val) {
+            if (val.finalResult) {
+              addMessage(text: val.recognizedWords, sender: MessageSender.user);
+              _isListening = false;
+              notifyListeners();
+            }
+          },
+        );
+      }
+    }
+  }
+
+  void _generateSmartTitle(String text) async {
     String cleanTitle = text.trim().toUpperCase();
     if (cleanTitle.length > 20)
       cleanTitle = "${cleanTitle.substring(0, 17)}...";
     _activeChat = _activeChat!.copyWith(title: cleanTitle);
-    final index = _chats.indexWhere((c) => c.id == _activeChat!.id);
-    if (index != -1) _chats[index] = _activeChat!;
-  }
-
-  void clear() {
-    if (_activeChat == null) return;
-    _activeChat = _activeChat!.copyWith(title: 'PURGED', messages: []);
-    final index = _chats.indexWhere((c) => c.id == _activeChat!.id);
-    if (index != -1) _chats[index] = _activeChat!;
+    final session = ParseObject('ChatSession')
+      ..objectId = _activeChat!.id
+      ..set('title', cleanTitle);
+    await session.save();
     notifyListeners();
   }
 
   String _id() => Random().nextInt(999999).toString();
+
+  // ===== NEW FEATURE START =====
+
+  /// Analyzes an image using Gemini Vision and adds the insight to the chat.
+  /// This integrates multimodal support into Sero's pipeline.
+  Future<void> analyzeImage(Uint8List imageBytes, String prompt) async {
+    _isTyping = true;
+    notifyListeners();
+
+    try {
+      // 1. Optimistically show user intent in UI
+      final userMsg = ChatMessage(
+        id: "temp_${_id()}",
+        text: "[ANALYZING IMAGE] $prompt",
+        sender: MessageSender.user,
+        timestamp: DateTime.now(),
+      );
+      _activeChat?.messages.add(userMsg);
+      notifyListeners();
+
+      // 2. Multimodal processing
+      final content = [
+        ai.Content.multi([
+          ai.TextPart(prompt),
+          ai.DataPart('image/jpeg', imageBytes),
+        ]),
+      ];
+
+      final response = await _model.generateContent(content);
+
+      if (response.text != null) {
+        await addMessage(text: response.text!, sender: MessageSender.sero);
+        await _flutterTts.speak(response.text!);
+      }
+    } catch (e) {
+      debugPrint("Vision Error: $e");
+      await addMessage(
+        text: "VISION ERROR: Sensory input failed.",
+        sender: MessageSender.sero,
+      );
+    } finally {
+      _isTyping = false;
+      notifyListeners();
+    }
+  }
+
+  /// Refreshes the active session to pull any new messages from other devices.
+  Future<void> refreshActiveChat() async {
+    if (_activeChat == null) return;
+    await fetchMessagesForActiveChat();
+  }
+
+  // ===== NEW FEATURE END =====
 }

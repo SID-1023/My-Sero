@@ -1,5 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+// Use the full package path to avoid 'non-type' resolution errors
+import 'package:sero/features/chat/chat_provider.dart';
 import 'auth_service.dart';
 
 class SeroLoginPage extends StatefulWidget {
@@ -67,14 +70,31 @@ class _SeroLoginPageState extends State<SeroLoginPage>
     final response = await _authService.login(username, password);
 
     if (mounted) {
-      setState(() => _isLoading = false);
       if (response.success) {
-        Navigator.pushReplacementNamed(context, '/');
+        try {
+          // Explicitly calling the provider to fetch history
+          final chatProvider = Provider.of<ChatProvider>(
+            context,
+            listen: false,
+          );
+          await chatProvider.loadChatHistory();
+
+          setState(() => _isLoading = false);
+          Navigator.pushReplacementNamed(context, '/');
+        } catch (e) {
+          setState(() => _isLoading = false);
+          _showError(
+            "Provider Link Failed: Ensure ChatProvider is in main.dart",
+          );
+        }
       } else {
+        setState(() => _isLoading = false);
         _showError("Signal Interrupted: ${response.error?.message}");
       }
     }
   }
+
+  // ... (Rest of your UI code remains exactly the same)
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -93,7 +113,6 @@ class _SeroLoginPageState extends State<SeroLoginPage>
       backgroundColor: const Color(0xFF050507),
       body: Stack(
         children: [
-          // 1. Dynamic Background Glows
           Positioned(
             top: -150,
             left: -100,
@@ -104,8 +123,6 @@ class _SeroLoginPageState extends State<SeroLoginPage>
             right: -100,
             child: _buildGlow(const Color(0xFF00A3FF).withOpacity(0.08), 500),
           ),
-
-          // 2. Main Content
           GestureDetector(
             onTap: () => FocusScope.of(context).unfocus(),
             child: Center(
@@ -117,7 +134,6 @@ class _SeroLoginPageState extends State<SeroLoginPage>
                     position: _slideAnimation,
                     child: Column(
                       children: [
-                        // Sci-Fi Logo Section
                         const Text(
                           "SERO",
                           style: TextStyle(
@@ -141,8 +157,6 @@ class _SeroLoginPageState extends State<SeroLoginPage>
                           ),
                         ),
                         const SizedBox(height: 60),
-
-                        // Glassmorphic Input Panel
                         _buildGlassPanel([
                           _buildInput(
                             "Username",
@@ -157,15 +171,9 @@ class _SeroLoginPageState extends State<SeroLoginPage>
                             isPass: true,
                           ),
                         ]),
-
                         const SizedBox(height: 40),
-
-                        // Action Button
                         _buildActionButton("INITIALIZE SESSION", _handleLogin),
-
                         const SizedBox(height: 24),
-
-                        // Footer
                         TextButton(
                           onPressed: () =>
                               Navigator.pushNamed(context, '/register'),

@@ -8,6 +8,11 @@ import 'package:flutter/services.dart'; // Added for Haptics
 import 'package:url_launcher/url_launcher.dart';
 import 'package:android_intent_plus/android_intent.dart'; // ADDED for advanced autoplay
 
+// ===== NEW FEATURE START =====
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+// ===== NEW FEATURE END =====
+
 import 'voice_output.dart';
 import '../chat/models/chat_message.dart';
 import '../chat/chat_provider.dart';
@@ -21,6 +26,11 @@ class VoiceInputProvider extends ChangeNotifier {
   final VoiceOutput _voiceOutput = VoiceOutput();
   ChatProvider _chatProvider; // Changed to non-final for updateChatProvider
 
+  // ===== NEW FEATURE START =====
+  GenerativeModel? _model;
+  ChatSession? _chatSession;
+  // ===== NEW FEATURE END =====
+
   VoiceInputProvider({required ChatProvider chatProvider})
     : _chatProvider = chatProvider;
 
@@ -28,6 +38,27 @@ class VoiceInputProvider extends ChangeNotifier {
   void updateChatProvider(ChatProvider newProvider) {
     _chatProvider = newProvider;
   }
+
+  // ===== NEW FEATURE START =====
+  /// Initializes the Gemini AI model and chat session
+  void init() {
+    final apiKey = dotenv.env['GEMINI_API_KEY'];
+    if (apiKey != null && apiKey.isNotEmpty) {
+      _model = GenerativeModel(
+        model: 'gemini-1.5-flash', // Optimized for speed and voice interaction
+        apiKey: apiKey,
+        generationConfig: GenerationConfig(
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 1024,
+        ),
+      );
+      // Initialize with empty history; persistence is handled by ChatProvider
+      _chatSession = _model!.startChat();
+    }
+  }
+  // ===== NEW FEATURE END =====
 
   /* ================= SETTINGS & PROFILE STATE ================= */
 
@@ -456,18 +487,22 @@ class VoiceInputProvider extends ChangeNotifier {
   /* ================= RESPONSE ENGINE ================= */
 
   Future<String> _fetchAIResponse(String input) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    final lower = input.toLowerCase();
-    if (lower.contains('hello') || lower.contains('hi')) {
-      return 'I am here, $_userName. What do you require from the void?';
+    // ===== NEW FEATURE START =====
+    if (_model == null || _chatSession == null) {
+      // Fallback if Gemini is not initialized
+      await Future.delayed(const Duration(milliseconds: 600));
+      return 'AI Brain not initialized. Check your .env file.';
     }
-    if (lower.contains('who are you')) {
-      return 'I am Sero, an emotion-aware presence bound to this device.';
+
+    try {
+      final content = Content.text(input);
+      final response = await _chatSession!.sendMessage(content);
+      return response.text ?? 'I could not process that request.';
+    } catch (e) {
+      debugPrint("Gemini API Error: $e");
+      return 'I encountered a connection error in the void. Please try again.';
     }
-    if (lower.contains('time')) {
-      return 'The time is ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}.';
-    }
-    return 'I heard you, but my processors cannot yet fulfill that request.';
+    // ===== NEW FEATURE END =====
   }
 
   Future<void> _generateSeroResponse(

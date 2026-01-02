@@ -180,6 +180,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
+  /*************  ✨ Windsurf Command ⭐  *************/
+  /// Displays an empty state screen with a centered icon and text.
+  ///
+  /// When the user presses the "INITIALIZE LINK" button, a new chat is created
+  /// and the user is navigated to the chat screen.
+  ///
+  /// This widget is used when there are no chats available in the provider.
+  /*******  beab59ab-e3b7-4ba0-a77c-4c5e7d3395bb  *******/
   Widget _buildEmptyState(BuildContext context, ChatProvider provider) {
     return Center(
       child: Column(
