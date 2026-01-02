@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../voice/voice_input.dart';
 import '../../widgets/mic_button.dart';
@@ -25,10 +26,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late final Animation<double> _badgePulse;
   Offset _pointerPos = Offset.zero;
   double _manualRotation = 0.0;
-
-  // Dynamic Accent Color from Back4app
+  bool _isBackendLive = false;
   Color _neuralAccentColor = const Color(0xFF00FF11);
 
   @override
@@ -38,18 +39,80 @@ class _HomeScreenState extends State<HomeScreen>
       vsync: this,
       duration: const Duration(seconds: 10),
     )..repeat();
-    _loadNeuralColor(); // Fetch the saved color on startup
+
+    _badgePulse = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0, 0.2, curve: Curves.easeInOut),
+      ),
+    );
+
+    _loadNeuralData();
+    _initVoiceCommandListener();
   }
 
-  // Fetch the accent color saved in Back4app Settings
-  Future<void> _loadNeuralColor() async {
+  /// Sets up a listener to watch for "Play ... on Spotify" commands
+  void _initVoiceCommandListener() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final voiceProvider = Provider.of<VoiceInputProvider>(
+        context,
+        listen: false,
+      );
+
+      voiceProvider.addListener(() {
+        // Triggered when transcription finishes
+        if (!voiceProvider.isListening &&
+            voiceProvider.lastTranscript.isNotEmpty) {
+          _handleSpotifyIntent(voiceProvider.lastTranscript);
+        }
+      });
+    });
+  }
+
+  /// Regex logic to extract song name and launch Spotify
+  Future<void> _handleSpotifyIntent(String transcript) async {
+    final text = transcript.toLowerCase();
+
+    if (text.contains('play') && text.contains('spotify')) {
+      // Matches "play [song name] on spotify" or "play [song name] in spotify"
+      final RegExp regex = RegExp(r"play\s+(.*?)\s+(?:on|in)\s+spotify");
+      final match = regex.firstMatch(text);
+
+      if (match != null) {
+        String songName = match.group(1) ?? "";
+        if (songName.isNotEmpty) {
+          final Uri spotifyUri = Uri.parse(
+            "spotify:search:${Uri.encodeComponent(songName)}",
+          );
+
+          if (await canLaunchUrl(spotifyUri)) {
+            await launchUrl(spotifyUri);
+            HapticFeedback.heavyImpact();
+          } else {
+            // Fallback to web search if app not found
+            final Uri webUri = Uri.parse(
+              "https://open.spotify.com/search/${Uri.encodeComponent(songName)}",
+            );
+            await launchUrl(webUri, mode: LaunchMode.externalApplication);
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _loadNeuralData() async {
+    try {
+      final ParseResponse response = await Parse().healthCheck();
+      setState(() => _isBackendLive = response.success);
+    } catch (_) {
+      setState(() => _isBackendLive = false);
+    }
+
     ParseUser? currentUser = await ParseUser.currentUser() as ParseUser?;
     if (currentUser != null) {
       String? savedColor = currentUser.get<String>('accentColor');
       if (savedColor != null) {
-        setState(() {
-          _neuralAccentColor = Color(int.parse(savedColor));
-        });
+        setState(() => _neuralAccentColor = Color(int.parse(savedColor)));
       }
     }
   }
@@ -58,9 +121,6 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final provider = context.watch<VoiceInputProvider>();
-
-    // If the provider has a specific "emotion" color, use that.
-    // Otherwise, use our saved neuralAccentColor.
     final Color activeColor = provider.isListening
         ? provider.emotionColor
         : _neuralAccentColor;
@@ -80,51 +140,19 @@ class _HomeScreenState extends State<HomeScreen>
         },
         child: SeroAuraEffect(
           touchPosition: _pointerPos,
-          color: activeColor, // SYNCED AURA
+          color: activeColor,
           child: Stack(
             children: [
               SafeArea(
                 child: Column(
                   children: [
                     const SizedBox(height: 32),
-                    _buildHeader(activeColor), // SYNCED HEADER TEXT
+                    _buildHeader(activeColor),
                     const Spacer(),
-
-                    // ================= MAIN ORB =================
-                    SizedBox(
-                      width: 320,
-                      height: 320,
-                      child: AnimatedBuilder(
-                        animation: _controller,
-                        builder: (_, __) {
-                          return Transform(
-                            alignment: Alignment.center,
-                            transform: Matrix4.identity()
-                              ..setEntry(3, 2, 0.001)
-                              ..rotateX(
-                                (_pointerPos.dy - size.height / 2) * -0.0005,
-                              )
-                              ..rotateY(
-                                (_pointerPos.dx - size.width / 2) * 0.0005,
-                              )
-                              ..rotateZ(_manualRotation),
-                            child: CustomPaint(
-                              painter: GlowingOrbPainter(
-                                progress: _controller.value,
-                                color: activeColor, // SYNCED ORB COLOR
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
+                    _buildOrb(size, activeColor),
                     const Spacer(),
-                    _buildKeyboardHint(
-                      context,
-                      activeColor,
-                    ), // SYNCED KEYBOARD HINT
-                    _buildBottomNav(provider, activeColor), // SYNCED NAV & MIC
+                    _buildKeyboardHint(context, activeColor),
+                    _buildBottomNav(activeColor),
                   ],
                 ),
               ),
@@ -136,30 +164,78 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Widget _buildOrb(Size size, Color activeColor) {
+    return SizedBox(
+      width: 320,
+      height: 320,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (_, __) {
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.001)
+              ..rotateX((_pointerPos.dy - size.height / 2) * -0.0005)
+              ..rotateY((_pointerPos.dx - size.width / 2) * 0.0005)
+              ..rotateZ(_manualRotation),
+            child: CustomPaint(
+              painter: GlowingOrbPainter(
+                progress: _controller.value,
+                color: activeColor,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildHeader(Color themeColor) {
     return Column(
       children: [
-        Text(
-          "I CAN SEARCH NEW CONTACTS",
-          style: TextStyle(
-            color: themeColor.withOpacity(0.7), // SYNCED
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 3,
+        FadeTransition(
+          opacity: _badgePulse,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: themeColor.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: themeColor.withOpacity(0.15)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: _isBackendLive ? themeColor : Colors.redAccent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _isBackendLive ? "SERO SYNCED" : "OFFLINE",
+                  style: TextStyle(
+                    color: themeColor.withOpacity(0.9),
+                    fontSize: 10,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 24),
         Text(
           "What Can I Do for\nYou Today?",
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 34,
             fontWeight: FontWeight.w700,
-            color: themeColor, // SYNCED
+            color: themeColor,
             height: 1.1,
-            shadows: [
-              Shadow(color: themeColor.withOpacity(0.5), blurRadius: 20),
-            ],
           ),
         ),
       ],
@@ -170,23 +246,19 @@ class _HomeScreenState extends State<HomeScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.lightImpact();
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const KeyboardInputScreen()),
-          );
-        },
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const KeyboardInputScreen())),
         child: Opacity(
           opacity: 0.4,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.keyboard, size: 16, color: themeColor), // SYNCED
+              Icon(Icons.keyboard, size: 16, color: themeColor),
               const SizedBox(width: 8),
               Text(
                 "Use Keyboard",
-                style: TextStyle(fontSize: 13, color: themeColor), // SYNCED
+                style: TextStyle(fontSize: 13, color: themeColor),
               ),
             ],
           ),
@@ -195,61 +267,35 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildBottomNav(VoiceInputProvider provider, Color themeColor) {
+  Widget _buildBottomNav(Color themeColor) {
     return Container(
       margin: const EdgeInsets.fromLTRB(30, 0, 30, 30),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.04),
         borderRadius: BorderRadius.circular(50),
-        border: Border.all(color: themeColor.withOpacity(0.1)), // SYNCED BORDER
+        border: Border.all(color: themeColor.withOpacity(0.1)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          Icon(
-            Icons.person_outline,
-            color: themeColor.withOpacity(0.3),
-          ), // SYNCED
-          Row(
-            children: [
-              IconButton(
-                icon: Icon(
-                  Icons.chat_bubble_outline,
-                  color: themeColor.withOpacity(0.4),
-                ),
-                onPressed: () {
-                  HapticFeedback.selectionClick();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ChatListScreen()),
-                  );
-                },
-              ),
-              IconButton(
-                icon: Icon(Icons.add, color: themeColor.withOpacity(0.4)),
-                onPressed: () {
-                  HapticFeedback.mediumImpact();
-                  context.read<ChatProvider>().createNewChat();
-                  Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
-                },
-              ),
-            ],
-          ),
-
-          // The Mic Button usually handles its own internal color,
-          // but you can pass themeColor if SeroMicButton supports it.
-          SeroMicButton(controller: _controller),
-
           IconButton(
-            icon: Icon(Icons.tune, color: themeColor), // SYNCED TUNE ICON
+            icon: Icon(
+              Icons.chat_bubble_outline,
+              color: themeColor.withOpacity(0.4),
+            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const ChatListScreen())),
+          ),
+          SeroMicButton(controller: _controller),
+          IconButton(
+            icon: Icon(Icons.tune_rounded, color: themeColor),
             onPressed: () async {
-              HapticFeedback.heavyImpact();
               await Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
-              _loadNeuralColor(); // Refresh color when returning from Settings
+              _loadNeuralData();
             },
           ),
         ],
@@ -264,15 +310,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// ... AuraPainter and SeroAuraEffect remain the same ...
-// ================= FX CLASSES DEFINED LOCALLY =================
-// Add this at the very bottom of home_screen.dart
-
+// --- FX ---
 class SeroAuraEffect extends StatelessWidget {
   final Widget child;
   final Offset touchPosition;
   final Color color;
-
   const SeroAuraEffect({
     super.key,
     required this.child,
@@ -292,7 +334,6 @@ class SeroAuraEffect extends StatelessWidget {
 class AuraPainter extends CustomPainter {
   final Offset touchPosition;
   final Color baseColor;
-
   AuraPainter({required this.touchPosition, required this.baseColor});
 
   @override
@@ -311,7 +352,6 @@ class AuraPainter extends CustomPainter {
           Colors.transparent,
         ],
       ).createShader(rect);
-
     canvas.drawRect(rect, paint);
   }
 

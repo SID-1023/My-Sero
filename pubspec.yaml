@@ -1,55 +1,58 @@
 name: sero
 description: Emotion-Aware Voice Assistant built with Flutter
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
-  # Updated for 2025: Supporting the latest stable Dart 3.x features
+  # Supporting the latest stable Dart 3.x features
   sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # --- CORE AI & DATA ---
-  # Google Gemini AI SDK
+  # --- CORE AI & INTELLIGENCE ---
+  # Latest Google Gemini AI SDK
   google_generative_ai: ^0.4.7
-  
-  # Configuration management
+  # Environment variable security
   flutter_dotenv: ^6.0.0
-
-  # Markdown renderer for AI responses
+  # Professional Markdown rendering for AI responses
   gpt_markdown: ^1.1.4
 
-  # --- VOICE & PERMISSIONS ---
-  # Voice Input (STT)
+  # --- VOICE & AUDITORY PIPELINE ---
+  # On-device Speech Recognition (STT)
   speech_to_text: ^7.3.0
-  # Voice Output (TTS)
+  # Neural Voice Output (TTS)
   flutter_tts: ^4.2.3
-  # Vital for handling new private photo/mic/contacts permissions in 2025
+  # Permission handling for Mic, Contacts, and Spotify
   permission_handler: ^12.0.1
 
-  # --- SYSTEM INTERACTION (NEW) ---
-  # To search and read device contacts
+  # --- SYSTEM & MULTIMEDIA INTERACTION ---
+  # Search and read device contacts
   flutter_contacts: ^1.1.9+2
-  # To open the phone dialer
-  url_launcher: ^6.3.2
-
-  # --- STATE & UI ---
-  provider: ^6.1.4
-  animate_do: ^4.2.0
-  cupertino_icons: ^1.0.8
-  intl: ^0.19.0
-  
-  # Modern federated plugin for app management
+  # Essential for Deep Linking and Browser hand-offs
+  url_launcher: ^6.3.2 
+  # For sending high-level Media Intents (Spotify Autoplay)
+  android_intent_plus: ^6.0.0
+  # To interact with installed apps
   flutter_device_apps: ^0.3.1
+  # Backend synchronization for the "Neural Link"
   parse_server_sdk_flutter: ^10.7.0
+
+  # --- STATE MANAGEMENT & UI ENGINE ---
+  # Modern Reactive State Management
+  provider: ^6.1.4
+  # Cinematic animations for the UI
+  animate_do: ^4.2.0
+  # Latest icon sets for 2026 design standards
+  cupertino_icons: ^1.0.8
+  # Internationalization and date/time formatting
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  # Enforcing the latest strict lints
+  # Latest strict lints for production code
   flutter_lints: ^5.0.0
 
 flutter:
