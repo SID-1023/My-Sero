@@ -23,15 +23,12 @@ Future<void> main() async {
   // 1. MUST BE FIRST: Required for async calls before runApp
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. LOAD ENV FIRST: Critical to prevent 'NotInitializedError'
-  // We wrap this in a try-catch to ensure the app doesn't crash on boot
+  // 2. LOAD ENV: Required for Gemini API keys
   try {
     await dotenv.load(fileName: ".env");
     debugPrint("Sero: Neural Memory established (.env loaded).");
   } catch (e) {
-    debugPrint(
-      "CRITICAL ERROR: Could not load .env file. Verify its location in root. $e",
-    );
+    debugPrint("CRITICAL ERROR: .env file missing. $e");
   }
 
   // 3. Initialize Back4app (The Neural Link)
@@ -47,10 +44,8 @@ Future<void> main() async {
     debug: true,
   );
 
-  // 4. Session Check & Data Warm-up
+  // 4. Session Verification & Pre-Sync
   bool loggedInStatus = false;
-
-  // We initialize the provider instance here so we can pre-load data
   final ChatProvider initialChatProvider = ChatProvider();
 
   try {
@@ -63,7 +58,7 @@ Future<void> main() async {
       loggedInStatus = response?.success ?? false;
 
       if (loggedInStatus) {
-        // PRE-FETCH: Sync chat history from Back4app cloud before UI builds
+        // Pull cloud data into memory before the first screen appears
         await initialChatProvider.loadChatHistory();
         debugPrint("Sero: Cloud history synchronized.");
       } else {
@@ -75,19 +70,19 @@ Future<void> main() async {
     loggedInStatus = false;
   }
 
-  // 5. Run the Multi-Provider Engine
+  // 5. Start Multi-Provider Engine
   runApp(
     MultiProvider(
       providers: [
-        // Initialize Gemini AI and Chat Logic
+        // AI & History: ..init() wakes up the Gemini GenerativeModel
         ChangeNotifierProvider.value(value: initialChatProvider..init()),
-        // Bridge Chat and Voice providers via Proxy
+
+        // Voice & Input: Proxy allows voice commands to access chat history/sessions
         ChangeNotifierProxyProvider<ChatProvider, VoiceInputProvider>(
           create: (context) => VoiceInputProvider(
             chatProvider: Provider.of<ChatProvider>(context, listen: false),
-          )..initSpeech(), // Wake up the microphone
+          )..initSpeech(),
           update: (context, chat, voice) {
-            // Ensure VoiceInputProvider always has the latest ChatProvider state
             return voice!..updateChatProvider(chat);
           },
         ),
@@ -103,42 +98,62 @@ class AssistantApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nested Consumers allow the entire app to react to voice (Emotion)
+    // and data syncing (Loading state) simultaneously.
     return Consumer<VoiceInputProvider>(
       builder: (context, voiceProvider, _) {
-        return MaterialApp(
-          title: 'Sero AI',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            brightness: Brightness.dark,
-            fontFamily: 'Inter',
-            scaffoldBackgroundColor: const Color(0xFF0B0B0F),
-            splashColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            colorScheme: ColorScheme.dark(
-              // The primary theme color now reacts to Sero's emotion
-              primary: voiceProvider.emotionColor,
-              secondary: const Color(0xFF1AFF6B),
-              surface: const Color(0xFF121212),
-            ),
-            textTheme: const TextTheme(
-              headlineMedium: TextStyle(
-                fontSize: 34,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFFFFB3B3),
+        return Consumer<ChatProvider>(
+          builder: (context, chatProvider, _) {
+            return MaterialApp(
+              title: 'Sero AI',
+              debugShowCheckedModeBanner: false,
+              theme: ThemeData(
+                brightness: Brightness.dark,
+                fontFamily: 'Inter',
+                scaffoldBackgroundColor: const Color(0xFF0B0B0F),
+                colorScheme: ColorScheme.dark(
+                  // Sero's primary color changes based on AI emotion
+                  primary: voiceProvider.emotionColor,
+                  secondary: const Color(0xFF1AFF6B),
+                  surface: const Color(0xFF121212),
+                ),
+                textTheme: const TextTheme(
+                  headlineMedium: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFFFB3B3),
+                  ),
+                ),
               ),
-            ),
-          ),
-          // Route logic: Send user to Home if session exists, else Login
-          initialRoute: isLoggedIn ? '/' : '/login',
-          routes: {
-            '/': (_) => const HomeScreen(),
-            '/login': (_) => const SeroLoginPage(),
-            '/register': (_) => const SeroRegisterPage(),
-            '/keyboard': (_) => const KeyboardInputScreen(),
-            '/listening': (_) => const ListeningScreen(),
-            '/settings': (_) => const SettingsScreen(),
-            '/chat_list': (_) => const ChatListScreen(),
-            '/chat_view': (_) => const ChatScreen(),
+              initialRoute: isLoggedIn ? '/' : '/login',
+              routes: {
+                '/': (_) => const HomeScreen(),
+                '/login': (_) => const SeroLoginPage(),
+                '/register': (_) => const SeroRegisterPage(),
+                '/keyboard': (_) => const KeyboardInputScreen(),
+                '/listening': (_) => const ListeningScreen(),
+                '/settings': (_) => const SettingsScreen(),
+                '/chat_list': (_) => const ChatListScreen(),
+                '/chat_view': (_) => const ChatScreen(),
+              },
+              // Global Overlay: Shows a blur and spinner when Sero is syncing with Cloud
+              builder: (context, child) {
+                return Stack(
+                  children: [
+                    child!,
+                    if (chatProvider.isLoading)
+                      Container(
+                        color: Colors.black.withOpacity(0.7),
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF1AFF6B),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            );
           },
         );
       },

@@ -4,8 +4,8 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  # Supporting the latest stable Dart 3.x features
-  sdk: '>=3.10.0 <4.0.0'
+  # Dart 3.3+ is required for advanced AI streaming and sealed classes
+  sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -14,50 +14,52 @@ dependencies:
   # --- CORE AI & DATA ---
   # Google Gemini AI SDK for intelligence
   google_generative_ai: ^0.4.7
-  # Environment variable management (Fixed version)
-  flutter_dotenv: ^6.0.0
+  # Environment variable management for .env files
+  flutter_dotenv: ^5.1.0
   # Professional AI response rendering with LaTeX support
   gpt_markdown: ^1.1.5
 
   # --- VOICE & PERMISSIONS ---
   # On-device speech recognition (STT)
-  speech_to_text: ^7.3.0
+  speech_to_text: ^7.0.0
   # Neural Text-to-Speech (TTS)
   flutter_tts: ^4.2.3
-  # Vital for Android 15 security permissions
-  permission_handler: ^12.0.1
+  # Critical for Android 15/16 security and microphone access
+  permission_handler: ^12.0.0
 
   # --- SYSTEM INTERACTION ---
+  # Hardware battery monitoring for offline commands
+  battery_plus: ^7.0.0
   # Contact indexing for "Call X" commands
   flutter_contacts: ^1.1.9+2
   # Deep linking for browser hand-offs
-  url_launcher: ^6.3.2
-  # Native Android Intents (Fixes 'AndroidIntent' undefined)
+  url_launcher: ^6.3.0
+  # Native Android Intents for Spotify/App system integration
   android_intent_plus: ^6.0.0
-  # Advanced app management
+  # Advanced app management to launch installed apps
   flutter_device_apps: ^0.3.1
   # Backend "Neural Link" sync via Back4app
   parse_server_sdk_flutter: ^10.7.0
 
   # --- STATE & UI ---
   # Modern Reactive State Management
-  provider: ^6.1.4
+  provider: ^6.1.0
   # Cinematic animations for the Sero UI
   animate_do: ^4.2.0
-  # 2026 standard icon sets
+  # Standard icon sets
   cupertino_icons: ^1.0.8
-  # Internationalization and dates
+  # Internationalization and date formatting
   intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  # Adjusted to 4.0.0 for better memory stability during build
-  flutter_lints: ^4.0.0
+  # Latest lint rules for better code hygiene
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
   
-  # Ensure the .env file is registered
+  # Register the .env file as a root asset (Critical for API keys)
   assets:
     - .env

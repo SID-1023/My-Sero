@@ -4,22 +4,35 @@ import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
 enum MessageSender { user, sero }
 
 class ChatMessage {
+  static const String keyClassName = 'Message'; // The class name in Back4app
+
   final String id;
   final String text;
   final MessageSender sender;
   final DateTime timestamp;
+  // ===== NEW FEATURE START =====
+  final String? imageUrl; // Stores cloud URL for multimodal images
+  // ===== NEW FEATURE END =====
 
   ChatMessage({
     required this.id,
     required this.text,
     required this.sender,
     required this.timestamp,
+    // ===== NEW FEATURE START =====
+    this.imageUrl,
+    // ===== NEW FEATURE END =====
   });
 
   // --- UI HELPERS ---
 
   /// Returns true if the message was sent by the human user.
   bool get isUser => sender == MessageSender.user;
+
+  // ===== NEW FEATURE START =====
+  /// Returns true if the message contains an image for vision analysis.
+  bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
+  // ===== NEW FEATURE END =====
 
   /// Returns a formatted time string (e.g., 14:05) for the terminal UI.
   String get timeLabel {
@@ -30,11 +43,9 @@ class ChatMessage {
 
   // --- PERSISTENCE HELPERS (Back4app) ---
 
-  /// Creates a ChatMessage from a Back4app ParseObject.
-  /// Handles null safety for text and sender to ensure UI stability.
+  /// Converts a Back4app ParseObject into a local ChatMessage object.
+  /// Used when pulling history from the cloud.
   factory ChatMessage.fromParse(ParseObject object) {
-    // We check 'isSero' boolean or 'sender' string depending on your DB schema
-    // Using your 'sender' string logic here:
     final senderString = object.get<String>('sender');
 
     return ChatMessage(
@@ -42,34 +53,44 @@ class ChatMessage {
       text: object.get<String>('text') ?? '',
       sender: senderString == 'user' ? MessageSender.user : MessageSender.sero,
       timestamp: object.createdAt ?? DateTime.now(),
+      // ===== NEW FEATURE START =====
+      imageUrl: object.get<ParseFileBase>('image')?.url,
+      // ===== NEW FEATURE END =====
     );
   }
 
-  /// Converts the current message into a format ready for Back4app.
-  /// This matches the columns you created in your Message class.
+  /// Converts the current ChatMessage data into a Map for saving to Back4app.
+  /// This corresponds to the columns 'text' and 'sender' in your database.
   Map<String, dynamic> toParseMap() {
     return {
       'text': text,
       'sender': sender == MessageSender.user ? 'user' : 'sero',
-      // 'timestamp' and 'objectId' are automatically handled by Back4app
+      // Note: 'user' pointer and 'createdAt' are usually handled in the Provider
     };
   }
 
   // --- STATE HELPERS ---
 
   /// Allows creating a new instance with modified fields.
-  /// Useful for optimistic UI updates in Flutter.
+  /// Essential for "Optimistic UI" updates where you show the message
+  /// locally before the server confirms the save.
   ChatMessage copyWith({
     String? id,
     String? text,
     MessageSender? sender,
     DateTime? timestamp,
+    // ===== NEW FEATURE START =====
+    String? imageUrl,
+    // ===== NEW FEATURE END =====
   }) {
     return ChatMessage(
       id: id ?? this.id,
       text: text ?? this.text,
       sender: sender ?? this.sender,
       timestamp: timestamp ?? this.timestamp,
+      // ===== NEW FEATURE START =====
+      imageUrl: imageUrl ?? this.imageUrl,
+      // ===== NEW FEATURE END =====
     );
   }
 }

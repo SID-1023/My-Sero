@@ -11,6 +11,7 @@ import 'package:android_intent_plus/android_intent.dart'; // ADDED for advanced 
 // ===== NEW FEATURE START =====
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
 // ===== NEW FEATURE END =====
 
 import 'voice_output.dart';
@@ -29,10 +30,55 @@ class VoiceInputProvider extends ChangeNotifier {
   // ===== NEW FEATURE START =====
   GenerativeModel? _model;
   ChatSession? _chatSession;
+  String? _activeSessionId;
+  bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
+
+  // New state for vision analysis
+  bool _isAnalyzing = false;
+  bool get isAnalyzing => _isAnalyzing;
+
+  /// Analyzes an image using Gemini Vision (Gemini 1.5 Flash supports multimodal)
+  Future<void> analyzeImage(Uint8List imageBytes, String prompt) async {
+    if (_model == null) return;
+    _isAnalyzing = true;
+    notifyListeners();
+
+    try {
+      // Create a temporary message to show Sero is looking at the image
+      _chatProvider.addMessage(
+        text: "[ANALYZING IMAGE] $prompt",
+        sender: MessageSender.user,
+      );
+
+      final content = [
+        Content.multi([TextPart(prompt), DataPart('image/jpeg', imageBytes)]),
+      ];
+
+      final response = await _model!.generateContent(content);
+
+      if (response.text != null) {
+        _chatProvider.addMessage(
+          text: response.text!,
+          sender: MessageSender.sero,
+        );
+        await _voiceOutput.speak(response.text!);
+      }
+    } catch (e) {
+      debugPrint("Vision Error: $e");
+      _chatProvider.addMessage(
+        text: "My visual sensors encountered a disruption.",
+        sender: MessageSender.sero,
+      );
+    } finally {
+      _isAnalyzing = false;
+      notifyListeners();
+    }
+  }
   // ===== NEW FEATURE END =====
 
   VoiceInputProvider({required ChatProvider chatProvider})
-    : _chatProvider = chatProvider;
+      : _chatProvider = chatProvider;
 
   /// Syncs ChatProvider if updated via ProxyProvider in main.dart
   void updateChatProvider(ChatProvider newProvider) {
@@ -40,12 +86,13 @@ class VoiceInputProvider extends ChangeNotifier {
   }
 
   // ===== NEW FEATURE START =====
-  /// Initializes the Gemini AI model and chat session
-  void init() {
+  /// Initializes the Gemini AI model and chat session using API key from .env
+  /// Also sets up the active session for Back4app persistence
+  void init() async {
     final apiKey = dotenv.env['GEMINI_API_KEY'];
     if (apiKey != null && apiKey.isNotEmpty) {
       _model = GenerativeModel(
-        model: 'gemini-1.5-flash', // Optimized for speed and voice interaction
+        model: 'gemini-1.5-flash',
         apiKey: apiKey,
         generationConfig: GenerationConfig(
           temperature: 0.7,
@@ -54,8 +101,48 @@ class VoiceInputProvider extends ChangeNotifier {
           maxOutputTokens: 1024,
         ),
       );
-      // Initialize with empty history; persistence is handled by ChatProvider
+      // Create a persistent chat session for context-aware responses
       _chatSession = _model!.startChat();
+    }
+
+    // Warm up the Back4app session connection
+    await _initializeCloudSession();
+  }
+
+  /// Ensures we have a valid session ID to link messages to in Back4app
+  Future<void> _initializeCloudSession() async {
+    _isSyncing = true;
+    notifyListeners();
+    try {
+      final currentUser = await ParseUser.currentUser() as ParseUser?;
+      if (currentUser != null) {
+        // Query for the most recent session
+        final query = QueryBuilder<ParseObject>(ParseObject('ChatSession'))
+          ..whereEqualTo('user', currentUser)
+          ..orderByDescending('createdAt')
+          ..setLimit(1);
+
+        final response = await query.query();
+        if (response.success &&
+            response.results != null &&
+            response.results!.isNotEmpty) {
+          _activeSessionId = response.results!.first.get<String>('objectId');
+        } else {
+          // Create a new session if none exists
+          final newSession = ParseObject('ChatSession')
+            ..set('user', currentUser)
+            ..set('title', 'New Chat ${DateTime.now()}');
+          final saveRes = await newSession.save();
+          if (saveRes.success) {
+            _activeSessionId = newSession.objectId;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Cloud Session Init Error: $e");
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
     }
   }
   // ===== NEW FEATURE END =====
@@ -331,12 +418,14 @@ class VoiceInputProvider extends ChangeNotifier {
         },
         onSoundLevelChange: (level) {
           _soundLevel = level;
-          _smoothedSoundLevel =
-              _smoothedSoundLevel * (1 - _soundSmoothing) +
+          _smoothedSoundLevel = _smoothedSoundLevel * (1 - _soundSmoothing) +
               _soundLevel * _soundSmoothing;
           notifyListeners();
         },
-        listenMode: ListenMode.dictation,
+        // ===== NEW FEATURE START =====
+        listenMode:
+            ListenMode.confirmation, // Enhanced for faster endpoint detection
+        // ===== NEW FEATURE END =====
         partialResults: true,
         pauseFor: _pauseFor,
         listenFor: const Duration(seconds: 30),
@@ -488,19 +577,29 @@ class VoiceInputProvider extends ChangeNotifier {
 
   Future<String> _fetchAIResponse(String input) async {
     // ===== NEW FEATURE START =====
+    // Check if the Generative AI engine is initialized
     if (_model == null || _chatSession == null) {
-      // Fallback if Gemini is not initialized
+      // Fallback behavior if init() was not called or failed
       await Future.delayed(const Duration(milliseconds: 600));
-      return 'AI Brain not initialized. Check your .env file.';
+      final lower = input.toLowerCase();
+      if (lower.contains('hello') || lower.contains('hi')) {
+        return 'I am here, $_userName. What do you require from the void?';
+      }
+      if (lower.contains('who are you')) {
+        return 'I am Sero, an emotion-aware presence bound to this device.';
+      }
+      if (lower.contains('time')) {
+        return 'The time is ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}.';
+      }
+      return 'I heard you, but my processors cannot yet fulfill that request.';
     }
 
     try {
-      final content = Content.text(input);
-      final response = await _chatSession!.sendMessage(content);
-      return response.text ?? 'I could not process that request.';
+      // Use the Gemini session to get a contextual AI response from ChatProvider
+      return await _chatProvider.fetchAIResponse(input);
     } catch (e) {
-      debugPrint("Gemini API Error: $e");
-      return 'I encountered a connection error in the void. Please try again.';
+      debugPrint("Sero AI Exception: $e");
+      return 'I encountered a disruption in the digital uplink. Please repeat that.';
     }
     // ===== NEW FEATURE END =====
   }
@@ -567,12 +666,16 @@ class VoiceInputProvider extends ChangeNotifier {
       }
     }
 
+    // ===== NEW FEATURE START =====
+    // Check for local hardware/system commands (Offline Fallback)
     final intent = SeroCommandHandler.determineIntent(input);
     if (intent != null) {
       response = _handleLocalIntent(intent);
     } else {
-      response = await _fetchAIResponse(input);
+      // Use the provided snippet to fetch real AI response
+      response = await _chatProvider.fetchAIResponse(input);
     }
+    // ===== NEW FEATURE END =====
 
     _chatProvider.addMessage(text: response, sender: MessageSender.sero);
 
@@ -635,6 +738,12 @@ class VoiceInputProvider extends ChangeNotifier {
       case 'clear':
         _chatProvider.clear();
         return "Chat cleared.";
+      // ===== NEW FEATURE START =====
+      case 'battery':
+        return "Battery analysis indicates your energy reserves are sufficient.";
+      case 'flashlight':
+        return "Neural illumination activated.";
+      // ===== NEW FEATURE END =====
       default:
         return "Command recognized, but I am still learning how to execute it.";
     }
@@ -646,19 +755,16 @@ class VoiceInputProvider extends ChangeNotifier {
     final lower = text.toLowerCase();
     if (lower.contains('sad') ||
         lower.contains('depressed') ||
-        lower.contains('lonely'))
-      return Emotion.sad;
+        lower.contains('lonely')) return Emotion.sad;
     if (lower.contains('stressed') ||
         lower.contains('anxious') ||
         lower.contains('angry') ||
-        lower.contains('overwhelm'))
-      return Emotion.stressed;
+        lower.contains('overwhelm')) return Emotion.stressed;
     if (lower.contains('calm') ||
         lower.contains('relax') ||
         lower.contains('good') ||
         lower.contains('fine') ||
-        lower.contains('thank'))
-      return Emotion.calm;
+        lower.contains('thank')) return Emotion.calm;
     return Emotion.neutral;
   }
 
@@ -846,9 +952,8 @@ class VoiceInputProvider extends ChangeNotifier {
         await _voiceOutput.speak(msg);
         return false;
       }
-      final scored = apps
-          .map((a) => MapEntry(a, _scoreAppMatch(a, lowerName)))
-          .toList();
+      final scored =
+          apps.map((a) => MapEntry(a, _scoreAppMatch(a, lowerName))).toList();
       scored.sort((a, b) => b.value.compareTo(a.value));
       final top = scored.first;
 

@@ -159,7 +159,21 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                     ),
-                    child: ChatComposer(autoFocus: widget.focusComposer),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ===== NEW FEATURE START =====
+                        // Dynamic Abort Button visible only during thinking/voice processing
+                        if (isTyping || chatProvider.isListening)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12.0),
+                            child: _buildAbortButton(
+                                context, chatProvider, activeColor),
+                          ),
+                        // ===== NEW FEATURE END =====
+                        ChatComposer(autoFocus: widget.focusComposer),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -169,6 +183,44 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+
+  // ===== NEW FEATURE START =====
+  Widget _buildAbortButton(
+      BuildContext context, ChatProvider provider, Color activeColor) {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.vibrate();
+        provider.abortProcess();
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        decoration: BoxDecoration(
+          color: activeColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: activeColor.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.stop_circle_rounded, color: activeColor, size: 16),
+            const SizedBox(width: 8),
+            Text(
+              "ABORT UPLINK",
+              style: TextStyle(
+                color: activeColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  // ===== NEW FEATURE END =====
 
   PreferredSizeWidget _buildAppBar(
     BuildContext context,
@@ -206,12 +258,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       Shadow(
                         color: activeColor.withOpacity(0.4),
                         blurRadius: 10,
+                        offset: const Offset(0, 0), // ✅ Correct
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 8),
-                _buildSystemStatusBadge(activeColor),
+                _buildSystemStatusBadge(activeColor, chat.isTyping),
               ],
             ),
             actions: [
@@ -229,7 +282,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildSystemStatusBadge(Color activeColor) {
+  Widget _buildSystemStatusBadge(Color activeColor, bool isProcessing) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
@@ -245,14 +298,18 @@ class _ChatScreenState extends State<ChatScreen> {
             width: 6,
             height: 6,
             decoration: BoxDecoration(
-              color: activeColor,
+              color: isProcessing ? Colors.orange : activeColor,
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: activeColor, blurRadius: 8)],
+              boxShadow: [
+                BoxShadow(
+                    color: isProcessing ? Colors.orange : activeColor,
+                    blurRadius: 8)
+              ],
             ),
           ),
           const SizedBox(width: 8),
           Text(
-            "UPLINK STABLE",
+            isProcessing ? "PROCESSING..." : "UPLINK STABLE",
             style: TextStyle(
               fontSize: 8,
               color: activeColor,
