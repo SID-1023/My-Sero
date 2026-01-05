@@ -165,6 +165,54 @@ class ChatProvider with ChangeNotifier {
       debugPrint("Abort Error: $e");
     }
   }
+
+  /// NEW FEATURE: Terminates multiple selected sessions and their messages from Back4app.
+  Future<void> terminateSelectedSessions(List<String> sessionIds) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      for (String id in sessionIds) {
+        // 1. Delete associated messages first
+        final QueryBuilder<ParseObject> msgQuery = QueryBuilder<ParseObject>(
+          ParseObject('Message'),
+        )..whereEqualTo('sessionId', id);
+
+        final msgResponse = await msgQuery.query();
+        if (msgResponse.results != null) {
+          for (var m in msgResponse.results!) {
+            await m.delete();
+          }
+        }
+
+        // 2. Delete the actual Session entry
+        final sessionObj = ParseObject('ChatSession')..objectId = id;
+        await sessionObj.delete();
+      }
+
+      // 3. Update local archive state
+      _chats.removeWhere((chat) => sessionIds.contains(chat.id));
+
+      // 4. Re-assign active chat if current one was purged
+      if (_activeChat != null && sessionIds.contains(_activeChat!.id)) {
+        _activeChat = _chats.isNotEmpty ? _chats.first : null;
+        if (_activeChat != null) await fetchMessagesForActiveChat();
+      }
+
+      debugPrint(
+          "[SYSTEM] Neural Archive Purged: ${sessionIds.length} sessions.");
+    } catch (e) {
+      debugPrint("Archive Purge Error: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// ALIAS METHOD: Required for bulk deletion in ChatListScreen
+  Future<void> deleteMultipleSessions(List<String> sessionIds) async {
+    await terminateSelectedSessions(sessionIds);
+  }
   // ===== NEW FEATURE END =====
 
   void _initTTS() {
