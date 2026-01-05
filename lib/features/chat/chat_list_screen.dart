@@ -26,6 +26,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   // ===== NEW FEATURE START =====
   bool _isSelectionMode = false;
   final List<String> _selectedSessionIds = [];
+  bool _isCreating = false; // Guard flag to prevent duplicate session creation
   // ===== NEW FEATURE END =====
 
   @override
@@ -43,6 +44,25 @@ class _ChatListScreenState extends State<ChatListScreen> {
         setState(() {
           _accentColor = Color(int.parse(colorHex));
         });
+      }
+    }
+  }
+
+  // ===== UPDATED LOGIC: Session Guard =====
+  Future<void> _handleCreateNewChat(ChatProvider provider) async {
+    if (_isCreating) return; // Block if already in progress
+
+    setState(() => _isCreating = true);
+    HapticFeedback.lightImpact();
+
+    try {
+      await provider.createNewChat();
+      if (mounted) {
+        _navigateToChat(context);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCreating = false);
       }
     }
   }
@@ -166,19 +186,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
       floatingActionButton: _isSelectionMode
           ? null
           : FloatingActionButton.extended(
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                provider.createNewChat();
-                _navigateToChat(context);
-              },
-              backgroundColor: _accentColor,
+              onPressed:
+                  _isCreating ? null : () => _handleCreateNewChat(provider),
+              backgroundColor: _isCreating ? Colors.grey : _accentColor,
               elevation: 20,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
-              icon: const Icon(Icons.add_circle_outline, color: Colors.black),
-              label: const Text(
-                "NEW EXCHANGE",
-                style: TextStyle(
+              icon: _isCreating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.black))
+                  : const Icon(Icons.add_circle_outline, color: Colors.black),
+              label: Text(
+                _isCreating ? "UPLINKING..." : "NEW EXCHANGE",
+                style: const TextStyle(
                   color: Colors.black,
                   fontWeight: FontWeight.w900,
                   fontSize: 12,
@@ -318,12 +341,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 borderRadius: BorderRadius.circular(30),
               ),
             ),
-            onPressed: () {
-              provider.createNewChat();
-              _navigateToChat(context);
-            },
+            onPressed:
+                _isCreating ? null : () => _handleCreateNewChat(provider),
             child: Text(
-              "INITIALIZE LINK",
+              _isCreating ? "LINKING..." : "INITIALIZE LINK",
               style: TextStyle(color: _accentColor),
             ),
           ),

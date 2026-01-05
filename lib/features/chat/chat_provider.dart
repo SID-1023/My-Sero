@@ -26,6 +26,7 @@ class ChatProvider with ChangeNotifier {
   ai.GenerativeModel? _model;
   ai.ChatSession? _chatSession;
   final Battery _battery = Battery();
+  bool _isCreatingSession = false; // Guard flag to prevent duplicate sessions
   // ===== NEW FEATURE END =====
 
   final SpeechToText _speechToText = SpeechToText();
@@ -353,24 +354,35 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> createNewChat() async {
+    // FIX: Guard against multiple simultaneous create calls
+    if (_isCreatingSession) return;
+
     final currentUser = await ParseUser.currentUser() as ParseUser?;
     if (currentUser == null) return;
 
-    final sessionObj = ParseObject('ChatSession')
-      ..set('title', 'NEW TERMINAL')
-      ..set('user', currentUser.toPointer());
+    _isCreatingSession = true;
+    notifyListeners();
 
-    final response = await sessionObj.save();
+    try {
+      final sessionObj = ParseObject('ChatSession')
+        ..set('title', 'NEW TERMINAL')
+        ..set('user', currentUser.toPointer());
 
-    if (response.success) {
-      final chat = ChatSession(
-        id: sessionObj.objectId!,
-        title: 'NEW TERMINAL',
-        createdAt: DateTime.now(),
-        messages: [],
-      );
-      _chats.insert(0, chat);
-      _activeChat = chat;
+      final response = await sessionObj.save();
+
+      if (response.success) {
+        final chat = ChatSession(
+          id: sessionObj.objectId!,
+          title: 'NEW TERMINAL',
+          createdAt: sessionObj.createdAt ?? DateTime.now(),
+          messages: [],
+        );
+        _chats.insert(0, chat);
+        _activeChat = chat;
+        notifyListeners();
+      }
+    } finally {
+      _isCreatingSession = false;
       notifyListeners();
     }
   }
@@ -379,10 +391,15 @@ class ChatProvider with ChangeNotifier {
     required String text,
     required MessageSender sender,
   }) async {
-    if (_activeChat == null) await createNewChat();
+    // FIX: Only create if no active session exists. Do not double-trigger.
+    if (_activeChat == null) {
+      await createNewChat();
+    }
 
-    // ===== NEW FEATURE START =====
-    // Optimistic UI Update: Create a temporary ID and add locally first for smooth animations
+    // Ensure we are using the stable session ID
+    final String currentSessionId = _activeChat!.id;
+
+    // ===== OPTIMISTIC UI UPDATE =====
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final tempMsg = ChatMessage(
       id: tempId,
@@ -392,16 +409,14 @@ class ChatProvider with ChangeNotifier {
     );
     _activeChat!.messages.add(tempMsg);
     notifyListeners();
-    // ===== NEW FEATURE END =====
 
     final msgObj = ParseObject('Message')
       ..set('text', text)
       ..set('sender', sender == MessageSender.user ? 'user' : 'sero')
-      ..set('sessionId', _activeChat!.id);
+      ..set('sessionId', currentSessionId);
 
     final response = await msgObj.save();
 
-    // ===== NEW FEATURE START =====
     // Reconcile optimistic message with server response
     if (response.success) {
       final index = _activeChat!.messages.indexWhere((m) => m.id == tempId);
@@ -418,7 +433,6 @@ class ChatProvider with ChangeNotifier {
       _activeChat!.messages.removeWhere((m) => m.id == tempId);
       notifyListeners();
     }
-    // ===== NEW FEATURE END =====
 
     if (sender == MessageSender.user) {
       await _handleAIRelationship(text);
@@ -426,10 +440,7 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> _handleAIRelationship(String userText) async {
-    // ===== NEW FEATURE START =====
-    // Offline Intent Fallback Check (Faster response for system commands)
     if (await _handleOfflineCommands(userText)) return;
-    // ===== NEW FEATURE END =====
 
     _isTyping = true;
     notifyListeners();
@@ -560,8 +571,6 @@ class ChatProvider with ChangeNotifier {
       return;
     }
     if (await Permission.microphone.request().isGranted) {
-      // ===== NEW FEATURE START =====
-      // Faster recognition: Initializing with ListenMode.confirmation for quicker intent detection
       if (await _speechToText.initialize()) {
         _isListening = true;
         _speechToText.listen(
@@ -575,7 +584,6 @@ class ChatProvider with ChangeNotifier {
           },
         );
       }
-      // ===== NEW FEATURE END =====
     }
   }
 
@@ -592,8 +600,6 @@ class ChatProvider with ChangeNotifier {
   }
 
   String _id() => Random().nextInt(999999).toString();
-
-  // ===== NEW FEATURE START =====
 
   /// Analyzes an image using Gemini Vision and adds the insight to the chat.
   Future<void> analyzeImage(Uint8List imageBytes, String prompt) async {
@@ -757,5 +763,4 @@ class ChatProvider with ChangeNotifier {
 
     return false;
   }
-  // ===== NEW FEATURE END =====
 }
